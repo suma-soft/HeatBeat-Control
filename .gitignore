@@ -1,16 +1,23 @@
-﻿# Node/Frontend
+# Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/.env
-# Python/Backend
+
+# Backend
 backend/.venv/
 backend/__pycache__/
 backend/.pytest_cache/
 backend/heatbeat.db
 backend/.env
-# OS / IDE
+
+# OS/IDE
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+# Line endings
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
