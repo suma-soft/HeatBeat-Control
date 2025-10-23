@@ -1,40 +1,28 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { api } from "../api";
+// frontend/src/context/AuthContext.tsx
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+
+// ⚙️ BASE URL API: z env Vite lub fallback na localhost:8000
+const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 type AuthCtx = {
   token: string | null;
-  user: { id: number; email: string } | null;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  setToken: (t: string | null) => void;
+  apiBaseUrl: string;
 };
 
-const Ctx = createContext<AuthCtx>(null as any);
+const Ctx = createContext<AuthCtx>({ token: null, setToken: () => {}, apiBaseUrl: DEFAULT_API_BASE });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("token"));
-  const [user, setUser] = useState<{ id: number; email: string } | null>(null);
-
+  const [token, setToken] = useState<string | null>(null);
   useEffect(() => {
-    if (token) {
-      api.me(token).then(setUser).catch(() => setUser(null));
-    } else {
-      setUser(null);
-    }
-  }, [token]);
+    // jeśli przechowujesz token w localStorage
+    const t = localStorage.getItem("token");
+    if (t) setToken(t);
+  }, []);
 
-  const login = async (email: string, password: string) => {
-    const { access_token } = await api.login(email, password);
-    setToken(access_token);
-    localStorage.setItem("token", access_token);
-  };
+  const value = useMemo(() => ({ token, setToken, apiBaseUrl: DEFAULT_API_BASE }), [token]);
 
-  const logout = () => {
-    setToken(null);
-    localStorage.removeItem("token");
-    setUser(null);
-  };
-
-  return <Ctx.Provider value={{ token, user, login, logout }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 };
 
 export const useAuth = () => useContext(Ctx);

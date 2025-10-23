@@ -1,25 +1,28 @@
-version: "3.9"
 services:
-  api:
-    build: ./backend
-    container_name: heatbeat_api
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=sqlite:///./heatbeat.db   # Na start SQLite (prosto). Zmienisz na Postgres później.
-      - JWT_SECRET=${JWT_SECRET:-change_me}
-      - TZ=Europe/Warsaw
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    working_dir: /app
     volumes:
       - ./backend:/app
-    working_dir: /app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - DATABASE_URL=sqlite:///./heatbeat.db
+      - JWT_SECRET=change_me_later
+    ports:
+      - "8000:8000"
 
   frontend:
-    image: node:20-alpine
-    container_name: heatbeat_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     working_dir: /app
+    command: npm run dev -- --host
     volumes:
       - ./frontend:/app
+      - /app/node_modules
     ports:
       - "5173:5173"
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - backend
