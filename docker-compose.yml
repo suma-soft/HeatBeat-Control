@@ -7,7 +7,7 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=sqlite:///./heatbeat.db   # Na start SQLite (prosto). Zmienisz na Postgres później.
-      - JWT_SECRET=super_tajne_haslo_zmien_mnie
+      - JWT_SECRET=${JWT_SECRET:-change_me}
       - TZ=Europe/Warsaw
     volumes:
       - ./backend:/app
