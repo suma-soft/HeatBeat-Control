@@ -6,7 +6,7 @@ import { useThermostat } from "./useThermostat";
 export default function ThermostatPanel({ deviceId = "thermo-001" }) {
   const { token, apiBaseUrl } = useAuth();
   const { state, setSetpoint } = useThermostat(apiBaseUrl, deviceId, token || undefined);
-  const [localTarget, setLocalTarget] = useState(null);
+  const [localTarget, setLocalTarget] = useState<number | null>(null);
 
   const temp = state?.last_telemetry?.temperature_c ?? null;
   const hum = state?.last_telemetry?.humidity_pct ?? null;

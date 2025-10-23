@@ -1,6 +1,7 @@
 // frontend/src/pages/Dashboard.tsx
 import React from "react";
-import ThermostatPanel from "../features/thermostat/ThermostatPanel.tsx";
+import { ThermostatPanel } from "../features/thermostat";
+
 
 export default function Dashboard() {
   return (
