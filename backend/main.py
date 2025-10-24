@@ -30,9 +30,11 @@ engine = create_engine(
     connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# >>> ZMIANA: używamy pbkdf2_sha256 zamiast bcrypt
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+# >>> ZMIANA: tokenUrl bez wiodącego / (lepsza współpraca ze swaggerem)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 # ------------------ Modele DB ------------------
 
@@ -45,14 +47,13 @@ class User(SQLModel, table=True):
 class Thermostat(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = "Salon"
-    # W przyszłości: przypisanie do użytkownika, budynku, strefy itp.
     owner_id: Optional[int] = Field(default=None, index=True)
 
 class ThermostatSetting(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     thermostat_id: int = Field(index=True, foreign_key="thermostat.id")
-    target_temp_c: float = 21.0  # zadana temperatura
-    mode: str = "auto"           # auto | heat | off
+    target_temp_c: float = 21.0
+    mode: str = "auto"
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Reading(SQLModel, table=True):
@@ -67,7 +68,7 @@ class Reading(SQLModel, table=True):
 class ScheduleEntry(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     thermostat_id: int = Field(index=True, foreign_key="thermostat.id")
-    weekday: int               # 0=pon, 6=niedz.
+    weekday: int
     start: time
     end: time
     target_temp_c: float
@@ -125,7 +126,6 @@ class ScheduleOut(BaseModel):
 def create_db():
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
-        # Utwórz domyślnego usera i termostat na start (jeśli brak)
         u = s.exec(select(User).where(User.email == "admin@example.com")).first()
         if not u:
             u = User(email="admin@example.com", password_hash=pwd_context.hash("admin123"))
@@ -147,7 +147,10 @@ app = FastAPI(title="HeatBeat FastAPI", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # podczas dev
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -191,7 +194,6 @@ def register(data: UserCreate):
         s.add(u)
         s.commit()
         s.refresh(u)
-        # domyślnie twórz osobisty termostat (przykładowo)
         t = Thermostat(name="Mój termostat", owner_id=u.id)
         s.add(t); s.commit()
         s.add(ThermostatSetting(thermostat_id=t.id, target_temp_c=21.0, mode="auto")); s.commit()
@@ -316,15 +318,12 @@ def del_schedule(tid: int, sid: int, user: User = Depends(get_current_user)):
         return {"ok": True}
 
 # ------------------ Endpointy dla URZĄDZENIA (RP2350) ------------------
-# Uwaga: w MVP brak uwierzytelnienia urządzeniowego – dodasz np. token urządzenia, MTLS, podpis HMAC itp.
 
 @app.post("/device/{tid}/reading")
 def device_push_reading(tid: int, data: ReadingIn):
-    """Wywoływane przez termostat (RP2350) – zapis bieżących odczytów."""
     with Session(engine) as s:
         t = s.get(Thermostat, tid)
         if not t:
-            # w realu lepiej mieć rejestrację urządzeń lub autoryzację
             raise HTTPException(404, "Nieznany termostat")
         r = Reading(
             thermostat_id=tid,
@@ -338,7 +337,6 @@ def device_push_reading(tid: int, data: ReadingIn):
 
 @app.get("/device/{tid}/settings")
 def device_pull_settings(tid: int):
-    """Wywoływane przez termostat – pobiera aktualną nastawę (temp/tryb)."""
     with Session(engine) as s:
         sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid)).first()
         if not sett:

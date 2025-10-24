@@ -1,24 +1,30 @@
-// frontend/src/pages/Login.tsx
-// Formularz logowania: przyjmuje "Email lub login" i wysyła { username: <to_co_poda_użytkownik>, password }.
+// frontend/src/pages/Register.tsx
+// Formularz rejestracji: wysyła { email, password, username: email }.
 
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
-export default function Login({ onSwitchToRegister }: { onSwitchToRegister: () => void }) {
-  const { login } = useAuth();
-  const [identifier, setIdentifier] = useState("");
+export default function Register({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
+  const { register } = useAuth();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (password !== confirm) {
+      setError("Hasła nie są takie same.");
+      return;
+    }
     setBusy(true);
     try {
-      await login(identifier.trim(), password);
+      await register(email.trim(), password);
+      // Po sukcesie token zapisany → App pokaże Dashboard
     } catch (err: any) {
-      setError(err?.message || "Nie udało się zalogować.");
+      setError(err?.message || "Nie udało się utworzyć konta.");
     } finally {
       setBusy(false);
     }
@@ -27,14 +33,15 @@ export default function Login({ onSwitchToRegister }: { onSwitchToRegister: () =
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <form onSubmit={onSubmit} className="w-full max-w-sm p-6 rounded-2xl border border-gray-300/40 shadow">
-        <h1 className="text-2xl font-bold mb-4">Logowanie</h1>
+        <h1 className="text-2xl font-bold mb-4">Rejestracja</h1>
 
-        <label className="block mb-2 text-sm">Email lub login</label>
+        <label className="block mb-2 text-sm">Email</label>
         <input
+          type="email"
           className="w-full mb-4 p-2 rounded border border-gray-300"
-          value={identifier}
-          onChange={(e) => setIdentifier(e.target.value)}
-          autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
           required
         />
 
@@ -44,7 +51,17 @@ export default function Login({ onSwitchToRegister }: { onSwitchToRegister: () =
           className="w-full mb-4 p-2 rounded border border-gray-300"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
+          autoComplete="new-password"
+          required
+        />
+
+        <label className="block mb-2 text-sm">Powtórz hasło</label>
+        <input
+          type="password"
+          className="w-full mb-4 p-2 rounded border border-gray-300"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          autoComplete="new-password"
           required
         />
 
@@ -55,13 +72,13 @@ export default function Login({ onSwitchToRegister }: { onSwitchToRegister: () =
           disabled={busy}
           className="w-full py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
         >
-          {busy ? "Logowanie…" : "Zaloguj się"}
+          {busy ? "Rejestruję…" : "Utwórz konto"}
         </button>
 
         <div className="mt-4 text-sm">
-          Nie masz konta?{" "}
-          <button type="button" onClick={onSwitchToRegister} className="text-emerald-700 underline">
-            Zarejestruj się
+          Masz już konto?{" "}
+          <button type="button" onClick={onSwitchToLogin} className="text-emerald-700 underline">
+            Zaloguj się
           </button>
         </div>
       </form>

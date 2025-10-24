@@ -2,3 +2,7 @@ node_modules
 dist
 .vite
 .git
+.gitignore
+Dockerfile
+docker-compose.yml
+*.log
