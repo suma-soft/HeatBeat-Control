@@ -10,7 +10,7 @@ export default function Dashboard() {
 
       {/* Możesz dodać więcej paneli dla wielu urządzeń */}
       <div className="grid gap-6 md:grid-cols-2">
-        <ThermostatPanel deviceId="thermo-001" />
+        <ThermostatPanel deviceId="001" />
       </div>
     </div>
   );
