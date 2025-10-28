@@ -14,13 +14,13 @@ Projekt jest częścią systemu HeatBeat i umożliwia:
 ## 🧱 Architektura
 
 ```mermaid
-flowchart TD
-  A["Frontend"]
-  B["Backend"]
-  C["RP2350"]
+flowchart LR
+  Frontend[Frontend]
+  RP2350[RP2350 Thermostat]
+  Backend[Backend]
 
-  A --> B
-  C --> B
+  Frontend --> Backend
+  RP2350 --> Backend
 ```
 
 - Frontend (React/Vite) – panel użytkownika (logowanie, dashboard, odczyty).
