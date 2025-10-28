@@ -15,13 +15,12 @@ Projekt jest częścią systemu HeatBeat i umożliwia:
 
 ```mermaid
 flowchart TD
-    A["Frontend: React + Vite + Tailwind<br/>PWA Web UI (port 5173)"]
-    B["Backend: FastAPI + SQLModel + JWT Auth<br/>API Server (port 8000)"]
-    C["RP2350 Thermostat<br/>Waveshare RP2350 Touch AMOLED 1.43<br/>BME280 + Wi‑Fi (RM2)"]
+  A["Frontend"]
+  B["Backend"]
+  C["RP2350"]
 
-    A -->|REST API (HTTP)| B
-    C -->|POST /device/:id/reading| B
-    C -->|GET /device/:id/settings| B
+  A --> B
+  C --> B
 ```
 
 - Frontend (React/Vite) – panel użytkownika (logowanie, dashboard, odczyty).
