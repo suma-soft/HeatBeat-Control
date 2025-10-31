@@ -84,10 +84,10 @@
   }
   
   .temp-button {
-    @apply w-12 h-12 rounded-full bg-white/20 border border-white/30 
+    @apply w-12 h-12 rounded-full bg-primary-500 border border-primary-600
            flex items-center justify-center text-white text-xl font-bold
-           hover:bg-white/30 transform hover:scale-110 transition-all duration-300
-           active:scale-95;
+           hover:bg-primary-600 transform hover:scale-110 transition-all duration-300
+           active:scale-95 shadow-lg hover:shadow-xl;
   }
 
   /* Status indicators */

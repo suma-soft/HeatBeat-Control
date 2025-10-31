@@ -27,7 +27,7 @@ type Mode = "auto" | "heat" | "off";
 type ThermostatApi = {
   id: number;
   name: string;
-  settings: { target_temp_c: number; mode: Mode };
+  settings: { target_temp_c: number; mode: Mode; last_source?: string };
 };
 
 type ReadingOut = {
@@ -153,10 +153,10 @@ export default function Dashboard() {
     try {
       const r = await authFetch(`${apiBase}/thermostats/${tid}/settings`);
       if (!r.ok) throw new Error((await r.text().catch(()=>"")) || `Błąd /thermostats/${tid}/settings (${r.status})`);
-      const data = await r.json() as { target_temp_c:number; mode:Mode; updated_at:string };
+      const data = await r.json() as { target_temp_c:number; mode:Mode; last_source?:string; updated_at:string };
       setThermos(arr => arr.map(t => t.id===tid ? {
         ...t,
-        settings: { target_temp_c: data.target_temp_c, mode: t.settings.mode }, // zachowujemy bieżący mode z backendu (ukryty)
+        settings: { target_temp_c: data.target_temp_c, mode: t.settings.mode, last_source: data.last_source }, // zachowujemy bieżący mode z backendu (ukryty)
         editTemp: data.target_temp_c,
         infoMsg: "Wartość z backendu została przywrócona (wykryto zmianę po stronie serwera).",
       } : t));
@@ -179,11 +179,11 @@ export default function Dashboard() {
         body: JSON.stringify({ target_temp_c: newTemp, mode }),
       });
       if (!r.ok) throw new Error((await r.text().catch(()=>"")) || `Błąd zapisu ustawień (${r.status})`);
-      const data = await r.json() as { target_temp_c:number; mode:Mode; updated_at:string };
+      const data = await r.json() as { target_temp_c:number; mode:Mode; last_source?:string; updated_at:string };
 
       setThermos(arr => arr.map(t => t.id===tid ? {
         ...t,
-        settings: { target_temp_c: data.target_temp_c, mode: data.mode },
+        settings: { target_temp_c: data.target_temp_c, mode: data.mode, last_source: data.last_source },
         editTemp: data.target_temp_c,
         saving:false,
         infoMsg:`Zapisano (${formatDate(data.updated_at)})`,
@@ -371,41 +371,73 @@ export default function Dashboard() {
                 <div className="temp-controls mb-6">
                   <button
                     onClick={() => bump(t.id, -STEP)}
-                    className="temp-button group"
+                    className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-white text-xl font-bold
+                               transition-colors duration-300 shadow-lg
+                               ${t.saving 
+                                 ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
+                                 : 'bg-purple-500 border-purple-600 hover:bg-purple-600'
+                               }`}
                     disabled={t.saving}
                   >
-                    <FiMinus className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                    {t.saving ? (
+                      <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                    ) : (
+                      <FiMinus className="w-6 h-6" />
+                    )}
                   </button>
                   
-                  <div className="flex flex-col items-center">
+                  <div className="text-center">
                     <div className="temp-display mb-1">
                       {t.editTemp.toFixed(1)}°C
                     </div>
                     <span className="text-white/60 text-xs">Zadana temperatura</span>
+                    {t.settings.last_source && (
+                      <div className="text-white/40 text-xs mt-1">
+                        Źródło: {t.settings.last_source === 'app' ? 'Aplikacja' : 'Termostat'}
+                      </div>
+                    )}
                   </div>
                   
                   <button
                     onClick={() => bump(t.id, +STEP)}
-                    className="temp-button group"
+                    className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-white text-xl font-bold
+                               transition-colors duration-300 shadow-lg
+                               ${t.saving 
+                                 ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
+                                 : 'bg-purple-500 border-purple-600 hover:bg-purple-600'
+                               }`}
                     disabled={t.saving}
                   >
-                    <FiPlus className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                    {t.saving ? (
+                      <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                    ) : (
+                      <FiPlus className="w-6 h-6" />
+                    )}
                   </button>
                 </div>
 
-                {/* Status Message */}
-                {t.infoMsg && (
-                  <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700">
-                    {t.infoMsg}
-                  </div>
-                )}
+                {/* Status Messages Container - Fixed Height */}
+                <div className="mb-4 min-h-[3.5rem] flex flex-col justify-center">
+                  {/* Status Message */}
+                  {t.infoMsg && (
+                    <div className="p-3 rounded-lg bg-purple-50 border border-purple-200 text-sm text-purple-700">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                        <span>{t.infoMsg}</span>
+                      </div>
+                    </div>
+                  )}
 
-                {/* Error Display */}
-                {t.error && (
-                  <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-                    {t.error}
-                  </div>
-                )}
+                  {/* Error Display */}
+                  {t.error && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                        <span>{t.error}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Sensor Readings */}
                 {t.lastReading ? (

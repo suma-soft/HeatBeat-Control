@@ -54,6 +54,7 @@ class ThermostatSetting(SQLModel, table=True):
     thermostat_id: int = Field(index=True, foreign_key="thermostat.id")
     target_temp_c: float = 21.0
     mode: str = "auto"
+    last_source: str = "app"  # "app" | "device"
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Reading(SQLModel, table=True):
@@ -92,6 +93,7 @@ class SettingsIn(BaseModel):
     mode: str  # auto|heat|off
 
 class SettingsOut(SettingsIn):
+    last_source: str
     updated_at: datetime
 
 class ReadingIn(BaseModel):
@@ -99,6 +101,10 @@ class ReadingIn(BaseModel):
     humidity_pct: Optional[float] = None
     pressure_hpa: Optional[float] = None
     window_open_detected: Optional[bool] = False
+
+class TargetTempIn(BaseModel):
+    target_temp_c: float
+    source: str = "device"  # "device" vs "app"
 
 class ReadingOut(BaseModel):
     id: int
@@ -138,7 +144,7 @@ def create_db():
             s.add(t)
             s.commit()
             s.refresh(t)
-            s.add(ThermostatSetting(thermostat_id=t.id, target_temp_c=21.0, mode="auto"))
+            s.add(ThermostatSetting(thermostat_id=t.id, target_temp_c=21.0, mode="auto", last_source="app"))
             s.commit()
 
 create_db()
@@ -196,7 +202,7 @@ def register(data: UserCreate):
         s.refresh(u)
         t = Thermostat(name="Mój termostat", owner_id=u.id)
         s.add(t); s.commit()
-        s.add(ThermostatSetting(thermostat_id=t.id, target_temp_c=21.0, mode="auto")); s.commit()
+        s.add(ThermostatSetting(thermostat_id=t.id, target_temp_c=21.0, mode="auto", last_source="app")); s.commit()
         return UserMe(id=u.id, email=u.email)
 
 @app.post("/auth/login", response_model=TokenOut)
@@ -226,7 +232,8 @@ def list_thermostats(user: User = Depends(get_current_user)):
                 "name": t.name,
                 "settings": {
                     "target_temp_c": sett.target_temp_c if sett else 21.0,
-                    "mode": sett.mode if sett else "auto"
+                    "mode": sett.mode if sett else "auto",
+                    "last_source": sett.last_source if sett else "app"
                 }
             })
         return out
@@ -240,7 +247,7 @@ def get_settings(tid: int, user: User = Depends(get_current_user)):
         sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid)).first()
         if not sett:
             raise HTTPException(404, "Brak ustawień")
-        return SettingsOut(target_temp_c=sett.target_temp_c, mode=sett.mode, updated_at=sett.updated_at)
+        return SettingsOut(target_temp_c=sett.target_temp_c, mode=sett.mode, last_source=sett.last_source, updated_at=sett.updated_at)
 
 @app.put("/thermostats/{tid}/settings", response_model=SettingsOut)
 def update_settings(tid: int, data: SettingsIn, user: User = Depends(get_current_user)):
@@ -252,15 +259,16 @@ def update_settings(tid: int, data: SettingsIn, user: User = Depends(get_current
             raise HTTPException(404, "Brak termostatu")
         sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid)).first()
         if not sett:
-            sett = ThermostatSetting(thermostat_id=tid)
+            sett = ThermostatSetting(thermostat_id=tid, last_source="app")
             s.add(sett)
         sett.target_temp_c = data.target_temp_c
         sett.mode = data.mode
+        sett.last_source = "app"  # Ustawione z aplikacji
         sett.updated_at = datetime.utcnow()
         s.add(sett)
         s.commit()
         s.refresh(sett)
-        return SettingsOut(target_temp_c=sett.target_temp_c, mode=sett.mode, updated_at=sett.updated_at)
+        return SettingsOut(target_temp_c=sett.target_temp_c, mode=sett.mode, last_source=sett.last_source, updated_at=sett.updated_at)
 
 @app.get("/thermostats/{tid}/readings", response_model=List[ReadingOut])
 def get_readings(tid: int, limit: int = 50, user: User = Depends(get_current_user)):
@@ -341,7 +349,34 @@ def device_pull_settings(tid: int):
         sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid)).first()
         if not sett:
             raise HTTPException(404, "Brak ustawień")
-        return {"target_temp_c": sett.target_temp_c, "mode": sett.mode, "updated_at": sett.updated_at.isoformat()}
+        return {"target_temp_c": sett.target_temp_c, "mode": sett.mode, "last_source": sett.last_source, "updated_at": sett.updated_at.isoformat()}
+
+@app.post("/device/{tid}/target-temp")
+def device_set_target_temp(tid: int, data: TargetTempIn):
+    """Endpoint dla urządzenia do ustawiania temperatury zadanej (np. gdy użytkownik zmieni na termostacie)"""
+    with Session(engine) as s:
+        t = s.get(Thermostat, tid)
+        if not t:
+            raise HTTPException(404, "Nieznany termostat")
+        
+        sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid)).first()
+        if not sett:
+            sett = ThermostatSetting(thermostat_id=tid)
+            s.add(sett)
+        
+        sett.target_temp_c = data.target_temp_c
+        sett.last_source = data.source  # "device" lub "app"
+        sett.updated_at = datetime.utcnow()
+        s.add(sett)
+        s.commit()
+        s.refresh(sett)
+        
+        return {
+            "ok": True, 
+            "target_temp_c": sett.target_temp_c, 
+            "source": sett.last_source,
+            "updated_at": sett.updated_at.isoformat()
+        }
 
 # ------------------ Zdrowie ------------------
 @app.get("/healthz")
