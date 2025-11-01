@@ -167,6 +167,7 @@ export default function Dashboard() {
 
   // --- wysyłka nowej zadanej (bez UI trybu; używamy aktualnego mode z backendu) ---
   const pushSetpoint = async (tid: number, newTemp: number) => {
+    console.log(`[FRONTEND] Wysyłam temperaturę ${newTemp}°C do backendu...`);
     setThermos(arr => arr.map(t => t.id===tid ? { ...t, saving:true, infoMsg:null } : t));
     try {
       // odczytaj "ukryty" mode z bieżącego stanu
@@ -181,6 +182,12 @@ export default function Dashboard() {
       if (!r.ok) throw new Error((await r.text().catch(()=>"")) || `Błąd zapisu ustawień (${r.status})`);
       const data = await r.json() as { target_temp_c:number; mode:Mode; last_source?:string; updated_at:string };
 
+      console.log(`[FRONTEND] Backend odpowiedział:`, {
+        temp: data.target_temp_c,
+        source: data.last_source,
+        updated: data.updated_at
+      });
+
       setThermos(arr => arr.map(t => t.id===tid ? {
         ...t,
         settings: { target_temp_c: data.target_temp_c, mode: data.mode, last_source: data.last_source },
@@ -193,6 +200,51 @@ export default function Dashboard() {
     }
   };
 
+  // --- sprawdź czy ustawienia się zmieniły (np. z urządzenia) ---
+  const checkSettingsUpdate = async (tid: number) => {
+    try {
+      const r = await authFetch(`${apiBase}/thermostats/${tid}/settings`);
+      if (!r.ok) return; // Ignoruj błędy w tle
+      const data = await r.json() as { target_temp_c:number; mode:Mode; last_source?:string; updated_at:string };
+      
+      setThermos(arr => arr.map(t => {
+        if (t.id !== tid) return t;
+        
+        // Sprawdź czy temperatura z backendu różni się od lokalnej
+        const backendTemp = data.target_temp_c;
+        const localTemp = t.editTemp;
+        
+        if (!approxEq(backendTemp, localTemp)) {
+          // Temperatura się zmieniła - aktualizuj
+          const sourceMsg = data.last_source === 'device' 
+            ? `Temperatura zmieniona z termostatu: ${backendTemp.toFixed(1)}°C`
+            : `Temperatura zmieniona z aplikacji: ${backendTemp.toFixed(1)}°C`;
+            
+          return {
+            ...t,
+            settings: { ...t.settings, target_temp_c: data.target_temp_c, last_source: data.last_source },
+            editTemp: data.target_temp_c,
+            infoMsg: sourceMsg,
+          };
+        }
+        
+        // Jeśli temperatura taka sama, tylko zaktualizuj last_source bez komunikatu
+        if (t.settings.last_source !== data.last_source) {
+          console.log(`[DEBUG] Aktualizuję tylko last_source: ${data.last_source}`);
+          return {
+            ...t,
+            settings: { ...t.settings, last_source: data.last_source }
+          };
+        }
+        
+        return t;
+      }));
+    } catch (e:any) {
+      // Ignoruj błędy w tle - nie przeszkadzaj użytkownikowi
+      console.log(`[DEBUG] Błąd checkSettingsUpdate:`, e.message);
+    }
+  };
+
   // --- kliknięcia + / − z logiką konfliktu ---
   const bump = (tid: number, delta: number) => {
     setThermos(arr => {
@@ -202,11 +254,19 @@ export default function Dashboard() {
         const backendVal = t.settings.target_temp_c;
         const localVal   = t.editTemp;
 
-        // jeżeli lokalna zadana i backendowa są różne → nie wysyłamy, tylko refresh
+        // Sprawdź czy lokalna i backendowa temperatura się różnią
         if (!approxEq(localVal, backendVal)) {
-          // odpalimy refresh asynchronicznie, a tu tylko komunikat
-          setTimeout(() => refreshSettings(tid), 0);
-          return { ...t, infoMsg: "Wykryto różnicę z backendem — odświeżam ustawienia…" };
+          // Różnica wykryta - sprawdź źródło ostatniej zmiany
+          if (t.settings.last_source === "device") {
+            // Zmiana pochodzi z termostatu → pobierz z backendu
+            setTimeout(() => refreshSettings(tid), 0);
+            return { ...t, infoMsg: "Temperatura zmieniona z termostatu — synchronizuję…" };
+          } else {
+            // Zmiana pochodzi z aplikacji lub nieznane źródło → wyślij nową wartość
+            const next = clampStep(localVal + delta);
+            setTimeout(() => pushSetpoint(tid, next), 0);
+            return { ...t, editTemp: next, infoMsg: "Wysyłam nową wartość (nadpisanie)…" };
+          }
         }
 
         // są takie same → można wyliczyć nową i wysłać
@@ -223,12 +283,19 @@ export default function Dashboard() {
   useEffect(() => { (async () => { await loadThermostats(); })(); }, [apiBase, token]);
   useEffect(() => { thermos.forEach(t => loadLastReading(t.id)); /* eslint-disable-next-line */ }, [thermos.length]);
 
-  // --- auto-polling odczytów ---
+  // --- auto-polling odczytów i ustawień ---
   useEffect(() => {
     if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; }
     if (pollMs > 0) {
       timerRef.current = window.setInterval(() => {
-        setThermos(arr => { arr.forEach(t => loadLastReading(t.id)); return arr; });
+        setThermos(arr => { 
+          arr.forEach(t => {
+            loadLastReading(t.id);
+            // Sprawdź także czy ustawienia się zmieniły (np. z urządzenia)
+            checkSettingsUpdate(t.id);
+          }); 
+          return arr; 
+        });
       }, pollMs) as unknown as number;
     }
     return () => { if (timerRef.current) window.clearInterval(timerRef.current); };

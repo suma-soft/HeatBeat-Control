@@ -8,7 +8,7 @@
 # Zmienna środowiskowa DATABASE_URL (domyślnie SQLite) i JWT_SECRET (zmień w produkcji!)
 
 from datetime import datetime, timedelta, time
-from typing import Optional, List
+from typing import Optional, List, Union
 import os
 from fastapi import FastAPI, Depends, HTTPException, status, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,7 +54,7 @@ class ThermostatSetting(SQLModel, table=True):
     thermostat_id: int = Field(index=True, foreign_key="thermostat.id")
     target_temp_c: float = 21.0
     mode: str = "auto"
-    last_source: str = "app"  # "app" | "device"
+    last_source: Optional[str] = "app"  # "app" | "device" - opcjonalne dla kompatybilności
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Reading(SQLModel, table=True):
@@ -105,6 +105,16 @@ class ReadingIn(BaseModel):
 class TargetTempIn(BaseModel):
     target_temp_c: float
     source: str = "device"  # "device" vs "app"
+
+class DeviceSettings(BaseModel):
+    target_temp_c: float
+    source: str = "device"  # "device" lub "app"
+
+class DeviceReading(BaseModel):
+    temperature_c: float
+    humidity_pct: float  
+    pressure_hpa: float
+    setpoint_c: float
 
 class ReadingOut(BaseModel):
     id: int
@@ -264,7 +274,7 @@ def update_settings(tid: int, data: SettingsIn, user: User = Depends(get_current
         sett.target_temp_c = data.target_temp_c
         sett.mode = data.mode
         sett.last_source = "app"  # Ustawione z aplikacji
-        sett.updated_at = datetime.utcnow()
+        sett.updated_at = datetime.utcnow()  # WAŻNE: Aktualizuj timestamp
         s.add(sett)
         s.commit()
         s.refresh(sett)
@@ -328,17 +338,29 @@ def del_schedule(tid: int, sid: int, user: User = Depends(get_current_user)):
 # ------------------ Endpointy dla URZĄDZENIA (RP2350) ------------------
 
 @app.post("/device/{tid}/reading")
-def device_push_reading(tid: int, data: ReadingIn):
+def device_push_reading(tid: int, data: Union[ReadingIn, DeviceReading]):
     with Session(engine) as s:
         t = s.get(Thermostat, tid)
         if not t:
             raise HTTPException(404, "Nieznany termostat")
+        
+        # Obsługa DeviceReading z setpoint_c
+        if hasattr(data, 'setpoint_c'):
+            # Aktualizujemy również ustawienia termostatu jeśli otrzymujemy setpoint_c
+            sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid)).first()
+            if sett and sett.target_temp_c != data.setpoint_c:
+                # Jeśli setpoint_c różni się od bazy, aktualizujemy (prawdopodobnie zmiana z termostatu)
+                sett.target_temp_c = data.setpoint_c
+                sett.last_source = "device"
+                sett.updated_at = datetime.utcnow()
+                s.add(sett)
+        
         r = Reading(
             thermostat_id=tid,
             temperature_c=data.temperature_c,
             humidity_pct=data.humidity_pct,
             pressure_hpa=data.pressure_hpa,
-            window_open_detected=data.window_open_detected
+            window_open_detected=getattr(data, 'window_open_detected', False)
         )
         s.add(r); s.commit(); s.refresh(r)
         return {"ok": True, "id": r.id, "at": r.created_at.isoformat()}
@@ -349,7 +371,34 @@ def device_pull_settings(tid: int):
         sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid)).first()
         if not sett:
             raise HTTPException(404, "Brak ustawień")
-        return {"target_temp_c": sett.target_temp_c, "mode": sett.mode, "last_source": sett.last_source, "updated_at": sett.updated_at.isoformat()}
+        # Zapewnienie wartości domyślnej dla last_source
+        last_source = sett.last_source or "app"
+        return {"target_temp_c": sett.target_temp_c, "mode": sett.mode, "last_source": last_source, "updated_at": sett.updated_at.isoformat()}
+
+@app.put("/device/{device_id}/settings")
+def device_update_settings(device_id: int, settings: DeviceSettings):
+    """Endpoint PUT dla termostatu do aktualizacji temperatury zadanej"""
+    if not (10.0 <= settings.target_temp_c <= 30.0):
+        raise HTTPException(status_code=400, detail="Temperatura poza zakresem 10-30°C")
+    
+    with Session(engine) as s:
+        t = s.get(Thermostat, device_id)
+        if not t:
+            raise HTTPException(404, "Nieznany termostat")
+        
+        sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == device_id)).first()
+        if not sett:
+            sett = ThermostatSetting(thermostat_id=device_id)
+            s.add(sett)
+        
+        sett.target_temp_c = settings.target_temp_c
+        sett.last_source = settings.source
+        sett.updated_at = datetime.utcnow()
+        s.add(sett)
+        s.commit()
+        s.refresh(sett)
+        
+        return {"status": "ok"}
 
 @app.post("/device/{tid}/target-temp")
 def device_set_target_temp(tid: int, data: TargetTempIn):
