@@ -11,8 +11,10 @@ import {
   FiMinus,
   FiClock,
   FiActivity,
-  FiUser
+  FiUser,
+  FiCalendar
 } from "react-icons/fi";
+import { ScheduleManager } from "../features/schedule";
 
 /**
  * Dashboard v5 – sterowanie zadaną bez przycisku „Zapisz” i bez wyboru trybu.
@@ -23,6 +25,7 @@ import {
 
 type UserMe = { id: number; email: string };
 type Mode = "auto" | "heat" | "off";
+type ActiveView = "dashboard" | "schedule";
 
 type ThermostatApi = {
   id: number;
@@ -81,6 +84,8 @@ export default function Dashboard() {
   const [thermos, setThermos] = useState<ThermostatView[]>([]);
   const [globalErr, setGlobalErr] = useState<string | null>(null);
   const [pollMs, setPollMs] = useState<number>(5000);
+  const [activeView, setActiveView] = useState<ActiveView>("dashboard");
+  const [selectedThermo, setSelectedThermo] = useState<ThermostatView | null>(null);
   const timerRef = useRef<number | null>(null);
 
   // --- fetch z autoryzacją ---
@@ -320,6 +325,37 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-4">
+              {/* Navigation tabs */}
+              <div className="hidden md:flex items-center gap-2">
+                <button
+                  onClick={() => setActiveView("dashboard")}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    activeView === "dashboard"
+                      ? "bg-white/20 text-white"
+                      : "text-white/70 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  <FiThermometer className="w-4 h-4 inline mr-2" />
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveView("schedule");
+                    if (thermos.length > 0 && !selectedThermo) {
+                      setSelectedThermo(thermos[0]);
+                    }
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    activeView === "schedule"
+                      ? "bg-white/20 text-white"
+                      : "text-white/70 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  <FiCalendar className="w-4 h-4 inline mr-2" />
+                  Harmonogram
+                </button>
+              </div>
+
               {/* Auto-refresh selector */}
               <div className="hidden md:flex items-center gap-3">
                 <FiClock className="w-4 h-4 text-white/70" />
@@ -382,222 +418,307 @@ export default function Dashboard() {
         )}
 
         {/* Welcome Section */}
-        <section className="mb-8 animate-fade-in">
-          <div className="glass-card p-6 rounded-2xl">
-            <div className="flex items-center gap-4 mb-2">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
-                <FiUser className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-white">
-                  Witaj{me?.email ? `, ${me.email.split('@')[0]}` : ""}! 👋
-                </h2>
-                <p className="text-white/70">Zarządzaj swoimi termostatami w jednym miejscu</p>
+        {activeView === "dashboard" && (
+          <section className="mb-8 animate-fade-in">
+            <div className="glass-card p-6 rounded-2xl">
+              <div className="flex items-center gap-4 mb-2">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
+                  <FiUser className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-white">
+                    Witaj{me?.email ? `, ${me.email.split('@')[0]}` : ""}! 👋
+                  </h2>
+                  <p className="text-white/70">Zarządzaj swoimi termostatami w jednym miejscu</p>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
-        {!hasThermo ? (
-          <div className="floating-card p-8 text-center animate-slide-up">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-secondary-400 to-secondary-600 flex items-center justify-center">
-              <FiHome className="w-8 h-8 text-white" />
-            </div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">Brak termostatów</h3>
-            <p className="text-gray-600">Zarejestruj urządzenie lub dodaj w bazie danych</p>
-          </div>
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-            {thermos.map((t, index) => (
-              <div 
-                key={t.id} 
-                className="floating-card p-6 animate-fade-in relative overflow-hidden"
-                style={{ animationDelay: `${index * 0.1}s` }}
-              >
-                {/* Background decoration */}
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-primary-400/20 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
-                
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6 relative z-10">
+        {/* Schedule Section */}
+        {activeView === "schedule" && (
+          <section className="mb-8 animate-fade-in">
+            <div className="glass-card p-6 rounded-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+                    <FiCalendar className="w-6 h-6 text-white" />
+                  </div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-800 mb-1">
-                      {t.name}
-                    </h3>
-                    <span className="text-sm text-gray-500">#{t.id}</span>
+                    <h2 className="text-2xl font-bold text-white">Harmonogramy temperatury</h2>
+                    <p className="text-white/70">Ustaw automatyczne zmiany temperatury w ciągu dnia</p>
                   </div>
-                  <button
-                    onClick={() => loadLastReading(t.id)}
-                    className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors duration-200"
-                    disabled={t.loading}
-                  >
-                    <FiRefreshCw className={`w-4 h-4 text-gray-600 ${t.loading ? 'animate-spin' : ''}`} />
-                  </button>
                 </div>
-
-                {/* Temperature Control */}
-                <div className="temp-controls mb-6">
-                  <button
-                    onClick={() => bump(t.id, -STEP)}
-                    className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-white text-xl font-bold
-                               transition-colors duration-300 shadow-lg
-                               ${t.saving 
-                                 ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
-                                 : 'bg-purple-500 border-purple-600 hover:bg-purple-600'
-                               }`}
-                    disabled={t.saving}
-                  >
-                    {t.saving ? (
-                      <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                    ) : (
-                      <FiMinus className="w-6 h-6" />
-                    )}
-                  </button>
-                  
-                  <div className="text-center">
-                    <div className="temp-display mb-1">
-                      {t.editTemp.toFixed(1)}°C
-                    </div>
-                    <span className="text-white/60 text-xs">Zadana temperatura</span>
-                    {t.settings.last_source && (
-                      <div className="text-white/40 text-xs mt-1">
-                        Źródło: {t.settings.last_source === 'app' ? 'Aplikacja' : 'Termostat'}
-                      </div>
-                    )}
-                  </div>
-                  
-                  <button
-                    onClick={() => bump(t.id, +STEP)}
-                    className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-white text-xl font-bold
-                               transition-colors duration-300 shadow-lg
-                               ${t.saving 
-                                 ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
-                                 : 'bg-purple-500 border-purple-600 hover:bg-purple-600'
-                               }`}
-                    disabled={t.saving}
-                  >
-                    {t.saving ? (
-                      <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                    ) : (
-                      <FiPlus className="w-6 h-6" />
-                    )}
-                  </button>
-                </div>
-
-                {/* Status Messages Container - Fixed Height */}
-                <div className="mb-4 min-h-[3.5rem] flex flex-col justify-center">
-                  {/* Status Message */}
-                  {t.infoMsg && (
-                    <div className="p-3 rounded-lg bg-purple-50 border border-purple-200 text-sm text-purple-700">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                        <span>{t.infoMsg}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Error Display */}
-                  {t.error && (
-                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                        <span>{t.error}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Sensor Readings */}
-                {t.lastReading ? (
-                  <div className="space-y-4">
-                    <div className="relative p-6 rounded-xl border border-orange-200 overflow-hidden">
-                      {/* Temperature indicator background */}
-                      <div className={`absolute inset-0 opacity-10 temp-indicator ${getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).status}`}></div>
-                      
-                      <div className="relative z-10">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-2">
-                            <FiThermometer className="w-5 h-5 text-orange-600" />
-                            <span className="text-sm font-medium text-orange-700">Temperatura</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full status-dot ${getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).status === 'optimal' ? 'online bg-green-500' : 'offline bg-red-500'}`}></div>
-                            <span className={`text-xs font-medium ${getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).color}`}>
-                              {getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).text}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="text-3xl font-bold text-orange-800 mb-1">
-                              {t.lastReading.temperature_c.toFixed(1)}°C
-                            </div>
-                            <div className="text-sm text-orange-600">
-                              Zadana: {t.editTemp.toFixed(1)}°C
-                            </div>
-                          </div>
-                          
-                          <div className="text-right">
-                            <div className="text-sm text-orange-600 mb-1">Różnica</div>
-                            <div className={`text-lg font-semibold ${getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).color}`}>
-                              {(t.lastReading.temperature_c - t.editTemp).toFixed(1)}°C
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-xl border border-blue-200 hover-lift">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FiDroplet className="w-4 h-4 text-blue-600" />
-                          <span className="text-xs font-medium text-blue-700">Wilgotność</span>
-                        </div>
-                        <div className="text-xl font-bold text-blue-800">
-                          {t.lastReading.humidity_pct ?? "-"}%
-                        </div>
-                      </div>
-                      
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-3 rounded-xl border border-purple-200 hover-lift">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FiWind className="w-4 h-4 text-purple-600" />
-                          <span className="text-xs font-medium text-purple-700">Ciśnienie</span>
-                        </div>
-                        <div className="text-lg font-bold text-purple-800">
-                          {t.lastReading.pressure_hpa ? Math.round(t.lastReading.pressure_hpa) : "-"}
-                        </div>
-                        <div className="text-xs text-purple-600">hPa</div>
-                      </div>
-                      
-                      <div className="bg-gradient-to-br from-green-50 to-green-100 p-3 rounded-xl border border-green-200 hover-lift">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FiHome className="w-4 h-4 text-green-600" />
-                          <span className="text-xs font-medium text-green-700">Okno</span>
-                        </div>
-                        <div className={`text-sm font-bold ${t.lastReading.window_open_detected ? 'text-red-600' : 'text-green-800'}`}>
-                          {t.lastReading.window_open_detected ? "OTWARTE" : "Zamknięte"}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="pt-3 border-t border-gray-200">
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <FiClock className="w-3 h-3" />
-                        <span>Ostatnia aktualizacja: {formatDate(t.lastReading.created_at)}</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <FiActivity className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Brak odczytów</p>
+                
+                {/* Thermostat selector for schedule */}
+                {thermos.length > 1 && (
+                  <div className="flex items-center gap-3">
+                    <label className="text-white/70 text-sm">Termostat:</label>
+                    <select
+                      value={selectedThermo?.id || ''}
+                      onChange={(e) => {
+                        const thermo = thermos.find(t => t.id === Number(e.target.value));
+                        setSelectedThermo(thermo || null);
+                      }}
+                      className="bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    >
+                      {thermos.map(t => (
+                        <option key={t.id} value={t.id} className="text-gray-800">
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </div>
-            ))}
-          </div>
+            </div>
+          </section>
+        )}
+
+        {/* Content based on active view */}
+        {activeView === "dashboard" ? (
+          // Dashboard content
+          !hasThermo ? (
+            <div className="floating-card p-8 text-center animate-slide-up">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-secondary-400 to-secondary-600 flex items-center justify-center">
+                <FiHome className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-800 mb-2">Brak termostatów</h3>
+              <p className="text-gray-600">Zarejestruj urządzenie lub dodaj w bazie danych</p>
+            </div>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+              {thermos.map((t, index) => (
+                <ThermostatCard 
+                  key={t.id} 
+                  thermostat={t} 
+                  index={index} 
+                  onBump={bump}
+                  onRefresh={loadLastReading}
+                />
+              ))}
+            </div>
+          )
+        ) : (
+          // Schedule content
+          selectedThermo ? (
+            <div className="floating-card p-6">
+              <ScheduleManager
+                thermostatId={selectedThermo.id}
+                thermostatName={selectedThermo.name}
+                token={token || undefined}
+              />
+            </div>
+          ) : (
+            <div className="floating-card p-8 text-center">
+              <FiCalendar className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+              <h3 className="text-xl font-semibold text-gray-800 mb-2">Wybierz termostat</h3>
+              <p className="text-gray-600">Aby zarządzać harmonogramem, najpierw wybierz termostat</p>
+            </div>
+          )
         )}
       </main>
+    </div>
+  );
+}
+
+// Komponent karty termostatu
+function ThermostatCard({ 
+  thermostat: t, 
+  index, 
+  onBump, 
+  onRefresh 
+}: {
+  thermostat: ThermostatView;
+  index: number;
+  onBump: (tid: number, delta: number) => void;
+  onRefresh: (tid: number) => void;
+}) {
+  return (
+    <div 
+      className="floating-card p-6 animate-fade-in relative overflow-hidden"
+      style={{ animationDelay: `${index * 0.1}s` }}
+    >
+      {/* Background decoration */}
+      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-primary-400/20 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
+      
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6 relative z-10">
+        <div>
+          <h3 className="text-xl font-bold text-gray-800 mb-1">
+            {t.name}
+          </h3>
+          <span className="text-sm text-gray-500">#{t.id}</span>
+        </div>
+        <button
+          onClick={() => onRefresh(t.id)}
+          className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors duration-200"
+          disabled={t.loading}
+        >
+          <FiRefreshCw className={`w-4 h-4 text-gray-600 ${t.loading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      {/* Temperature Control */}
+      <div className="temp-controls mb-6">
+        <button
+          onClick={() => onBump(t.id, -STEP)}
+          className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-white text-xl font-bold
+                     transition-colors duration-300 shadow-lg
+                     ${t.saving 
+                       ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
+                       : 'bg-purple-500 border-purple-600 hover:bg-purple-600'
+                     }`}
+          disabled={t.saving}
+        >
+          {t.saving ? (
+            <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+          ) : (
+            <FiMinus className="w-6 h-6" />
+          )}
+        </button>
+        
+        <div className="text-center">
+          <div className="temp-display mb-1">
+            {t.editTemp.toFixed(1)}°C
+          </div>
+          <span className="text-white/60 text-xs">Zadana temperatura</span>
+          {t.settings.last_source && (
+            <div className="text-white/40 text-xs mt-1">
+              Źródło: {t.settings.last_source === 'app' ? 'Aplikacja' : 'Termostat'}
+            </div>
+          )}
+        </div>
+        
+        <button
+          onClick={() => onBump(t.id, +STEP)}
+          className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-white text-xl font-bold
+                     transition-colors duration-300 shadow-lg
+                     ${t.saving 
+                       ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
+                       : 'bg-purple-500 border-purple-600 hover:bg-purple-600'
+                     }`}
+          disabled={t.saving}
+        >
+          {t.saving ? (
+            <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+          ) : (
+            <FiPlus className="w-6 h-6" />
+          )}
+        </button>
+      </div>
+
+      {/* Status Messages Container - Fixed Height */}
+      <div className="mb-4 min-h-[3.5rem] flex flex-col justify-center">
+        {/* Status Message */}
+        {t.infoMsg && (
+          <div className="p-3 rounded-lg bg-purple-50 border border-purple-200 text-sm text-purple-700">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+              <span>{t.infoMsg}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {t.error && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+              <span>{t.error}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Sensor Readings */}
+      {t.lastReading ? (
+        <div className="space-y-4">
+          <div className="relative p-6 rounded-xl border border-orange-200 overflow-hidden">
+            {/* Temperature indicator background */}
+            <div className={`absolute inset-0 opacity-10 temp-indicator ${getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).status}`}></div>
+            
+            <div className="relative z-10">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <FiThermometer className="w-5 h-5 text-orange-600" />
+                  <span className="text-sm font-medium text-orange-700">Temperatura</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full status-dot ${getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).status === 'optimal' ? 'online bg-green-500' : 'offline bg-red-500'}`}></div>
+                  <span className={`text-xs font-medium ${getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).color}`}>
+                    {getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).text}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-3xl font-bold text-orange-800 mb-1">
+                    {t.lastReading.temperature_c.toFixed(1)}°C
+                  </div>
+                  <div className="text-sm text-orange-600">
+                    Zadana: {t.editTemp.toFixed(1)}°C
+                  </div>
+                </div>
+                
+                <div className="text-right">
+                  <div className="text-sm text-orange-600 mb-1">Różnica</div>
+                  <div className={`text-lg font-semibold ${getTemperatureStatus(t.lastReading.temperature_c, t.editTemp).color}`}>
+                    {(t.lastReading.temperature_c - t.editTemp).toFixed(1)}°C
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-xl border border-blue-200 hover-lift">
+              <div className="flex items-center gap-2 mb-2">
+                <FiDroplet className="w-4 h-4 text-blue-600" />
+                <span className="text-xs font-medium text-blue-700">Wilgotność</span>
+              </div>
+              <div className="text-xl font-bold text-blue-800">
+                {t.lastReading.humidity_pct ?? "-"}%
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-3 rounded-xl border border-purple-200 hover-lift">
+              <div className="flex items-center gap-2 mb-2">
+                <FiWind className="w-4 h-4 text-purple-600" />
+                <span className="text-xs font-medium text-purple-700">Ciśnienie</span>
+              </div>
+              <div className="text-lg font-bold text-purple-800">
+                {t.lastReading.pressure_hpa ? Math.round(t.lastReading.pressure_hpa) : "-"}
+              </div>
+              <div className="text-xs text-purple-600">hPa</div>
+            </div>
+            
+            <div className="bg-gradient-to-br from-green-50 to-green-100 p-3 rounded-xl border border-green-200 hover-lift">
+              <div className="flex items-center gap-2 mb-2">
+                <FiHome className="w-4 h-4 text-green-600" />
+                <span className="text-xs font-medium text-green-700">Okno</span>
+              </div>
+              <div className={`text-sm font-bold ${t.lastReading.window_open_detected ? 'text-red-600' : 'text-green-800'}`}>
+                {t.lastReading.window_open_detected ? "OTWARTE" : "Zamknięte"}
+              </div>
+            </div>
+          </div>
+          
+          <div className="pt-3 border-t border-gray-200">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <FiClock className="w-3 h-3" />
+              <span>Ostatnia aktualizacja: {formatDate(t.lastReading.created_at)}</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          <FiActivity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">Brak odczytów</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -66,9 +66,18 @@ class Reading(SQLModel, table=True):
     window_open_detected: Optional[bool] = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+class ScheduleTemplate(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    thermostat_id: int = Field(index=True, foreign_key="thermostat.id")
+    name: str = "Domyślny harmonogram"
+    description: Optional[str] = None
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 class ScheduleEntry(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     thermostat_id: int = Field(index=True, foreign_key="thermostat.id")
+    template_id: Optional[int] = Field(default=None, foreign_key="scheduletemplate.id")
     weekday: int
     start: time
     end: time
@@ -129,6 +138,7 @@ class ScheduleIn(BaseModel):
     start: str  # "HH:MM"
     end: str    # "HH:MM"
     target_temp_c: float
+    template_id: Optional[int] = None
 
 class ScheduleOut(BaseModel):
     id: int
@@ -136,6 +146,31 @@ class ScheduleOut(BaseModel):
     start: str
     end: str
     target_temp_c: float
+    template_id: Optional[int] = None
+
+class ScheduleTemplateIn(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+
+class ScheduleTemplateOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    is_active: bool
+    created_at: datetime
+    entries_count: int = 0
+
+class ScheduleBulkIn(BaseModel):
+    weekdays: List[int]  # Lista dni tygodnia [0,1,2,3,4] lub [5,6]
+    start: str  # "HH:MM"
+    end: str    # "HH:MM"
+    target_temp_c: float
+    template_id: Optional[int] = None
+
+class ScheduleBulkOut(BaseModel):
+    created_count: int
+    created_entries: List[ScheduleOut]
 
 # ------------------ Inicjalizacja ------------------
 
@@ -297,13 +332,122 @@ def get_readings(tid: int, limit: int = 50, user: User = Depends(get_current_use
         ]
 
 @app.get("/thermostats/{tid}/schedule", response_model=List[ScheduleOut])
-def list_schedule(tid: int, user: User = Depends(get_current_user)):
+def list_schedule(tid: int, template_id: Optional[int] = None, user: User = Depends(get_current_user)):
     with Session(engine) as s:
         t = s.get(Thermostat, tid)
         if not t or t.owner_id != user.id:
             raise HTTPException(404, "Brak termostatu")
-        rows = s.exec(select(ScheduleEntry).where(ScheduleEntry.thermostat_id == tid)).all()
-        return [ScheduleOut(id=e.id, weekday=e.weekday, start=time_to_hhmm(e.start), end=time_to_hhmm(e.end), target_temp_c=e.target_temp_c) for e in rows]
+        
+        query = select(ScheduleEntry).where(ScheduleEntry.thermostat_id == tid)
+        if template_id is not None:
+            query = query.where(ScheduleEntry.template_id == template_id)
+        
+        rows = s.exec(query.order_by(ScheduleEntry.weekday, ScheduleEntry.start)).all()
+        return [ScheduleOut(
+            id=e.id, weekday=e.weekday, start=time_to_hhmm(e.start), 
+            end=time_to_hhmm(e.end), target_temp_c=e.target_temp_c,
+            template_id=e.template_id
+        ) for e in rows]
+
+@app.get("/thermostats/{tid}/schedule/templates", response_model=List[ScheduleTemplateOut])
+def list_schedule_templates(tid: int, user: User = Depends(get_current_user)):
+    with Session(engine) as s:
+        t = s.get(Thermostat, tid)
+        if not t or t.owner_id != user.id:
+            raise HTTPException(404, "Brak termostatu")
+        
+        templates = s.exec(select(ScheduleTemplate).where(ScheduleTemplate.thermostat_id == tid)).all()
+        result = []
+        for template in templates:
+            entries_count = s.exec(select(ScheduleEntry).where(ScheduleEntry.template_id == template.id)).all()
+            result.append(ScheduleTemplateOut(
+                id=template.id,
+                name=template.name,
+                description=template.description,
+                is_active=template.is_active,
+                created_at=template.created_at,
+                entries_count=len(entries_count)
+            ))
+        return result
+
+@app.post("/thermostats/{tid}/schedule/templates", response_model=ScheduleTemplateOut)
+def create_schedule_template(tid: int, data: ScheduleTemplateIn, user: User = Depends(get_current_user)):
+    with Session(engine) as s:
+        t = s.get(Thermostat, tid)
+        if not t or t.owner_id != user.id:
+            raise HTTPException(404, "Brak termostatu")
+        
+        template = ScheduleTemplate(
+            thermostat_id=tid,
+            name=data.name,
+            description=data.description,
+            is_active=data.is_active
+        )
+        s.add(template)
+        s.commit()
+        s.refresh(template)
+        
+        return ScheduleTemplateOut(
+            id=template.id,
+            name=template.name,
+            description=template.description,
+            is_active=template.is_active,
+            created_at=template.created_at,
+            entries_count=0
+        )
+
+@app.put("/thermostats/{tid}/schedule/templates/{template_id}", response_model=ScheduleTemplateOut)
+def update_schedule_template(tid: int, template_id: int, data: ScheduleTemplateIn, user: User = Depends(get_current_user)):
+    with Session(engine) as s:
+        t = s.get(Thermostat, tid)
+        if not t or t.owner_id != user.id:
+            raise HTTPException(404, "Brak termostatu")
+        
+        template = s.get(ScheduleTemplate, template_id)
+        if not template or template.thermostat_id != tid:
+            raise HTTPException(404, "Brak szablonu")
+        
+        template.name = data.name
+        template.description = data.description
+        template.is_active = data.is_active
+        s.add(template)
+        s.commit()
+        s.refresh(template)
+        
+        entries_count = len(s.exec(select(ScheduleEntry).where(ScheduleEntry.template_id == template.id)).all())
+        return ScheduleTemplateOut(
+            id=template.id,
+            name=template.name,
+            description=template.description,
+            is_active=template.is_active,
+            created_at=template.created_at,
+            entries_count=entries_count
+        )
+
+@app.delete("/thermostats/{tid}/schedule/templates/{template_id}")
+def delete_schedule_template(tid: int, template_id: int, delete_entries: bool = False, user: User = Depends(get_current_user)):
+    with Session(engine) as s:
+        t = s.get(Thermostat, tid)
+        if not t or t.owner_id != user.id:
+            raise HTTPException(404, "Brak termostatu")
+        
+        template = s.get(ScheduleTemplate, template_id)
+        if not template or template.thermostat_id != tid:
+            raise HTTPException(404, "Brak szablonu")
+        
+        # Sprawdź czy istnieją wpisy powiązane z tym szablonem
+        entries = s.exec(select(ScheduleEntry).where(ScheduleEntry.template_id == template_id)).all()
+        if entries and not delete_entries:
+            raise HTTPException(400, f"Szablon zawiera {len(entries)} wpisów. Użyj delete_entries=true aby je usunąć.")
+        
+        # Usuń wpisy jeśli delete_entries=true
+        if delete_entries:
+            for entry in entries:
+                s.delete(entry)
+        
+        s.delete(template)
+        s.commit()
+        return {"ok": True, "deleted_entries": len(entries) if delete_entries else 0}
 
 @app.post("/thermostats/{tid}/schedule", response_model=ScheduleOut)
 def add_schedule(tid: int, data: ScheduleIn, user: User = Depends(get_current_user)):
@@ -313,15 +457,67 @@ def add_schedule(tid: int, data: ScheduleIn, user: User = Depends(get_current_us
         t = s.get(Thermostat, tid)
         if not t or t.owner_id != user.id:
             raise HTTPException(404, "Brak termostatu")
+        
+        # Sprawdź czy template_id istnieje (jeśli podane)
+        if data.template_id is not None:
+            template = s.get(ScheduleTemplate, data.template_id)
+            if not template or template.thermostat_id != tid:
+                raise HTTPException(404, "Brak szablonu")
+        
         e = ScheduleEntry(
             thermostat_id=tid,
+            template_id=data.template_id,
             weekday=data.weekday,
             start=hhmm_to_time(data.start),
             end=hhmm_to_time(data.end),
             target_temp_c=data.target_temp_c
         )
         s.add(e); s.commit(); s.refresh(e)
-        return ScheduleOut(id=e.id, weekday=e.weekday, start=data.start, end=data.end, target_temp_c=e.target_temp_c)
+        return ScheduleOut(
+            id=e.id, weekday=e.weekday, start=data.start, end=data.end, 
+            target_temp_c=e.target_temp_c, template_id=e.template_id
+        )
+
+@app.post("/thermostats/{tid}/schedule/bulk", response_model=ScheduleBulkOut)
+def add_schedule_bulk(tid: int, data: ScheduleBulkIn, user: User = Depends(get_current_user)):
+    # Walidacja dni tygodnia
+    for weekday in data.weekdays:
+        if not (0 <= weekday <= 6):
+            raise HTTPException(400, f"Nieprawidłowy dzień tygodnia: {weekday} (oczekiwane 0-6)")
+    
+    with Session(engine) as s:
+        t = s.get(Thermostat, tid)
+        if not t or t.owner_id != user.id:
+            raise HTTPException(404, "Brak termostatu")
+        
+        # Sprawdź czy template_id istnieje (jeśli podane)
+        if data.template_id is not None:
+            template = s.get(ScheduleTemplate, data.template_id)
+            if not template or template.thermostat_id != tid:
+                raise HTTPException(404, "Brak szablonu")
+        
+        created_entries = []
+        for weekday in data.weekdays:
+            e = ScheduleEntry(
+                thermostat_id=tid,
+                template_id=data.template_id,
+                weekday=weekday,
+                start=hhmm_to_time(data.start),
+                end=hhmm_to_time(data.end),
+                target_temp_c=data.target_temp_c
+            )
+            s.add(e)
+            s.commit()
+            s.refresh(e)
+            created_entries.append(ScheduleOut(
+                id=e.id, weekday=e.weekday, start=data.start, end=data.end,
+                target_temp_c=e.target_temp_c, template_id=e.template_id
+            ))
+        
+        return ScheduleBulkOut(
+            created_count=len(created_entries),
+            created_entries=created_entries
+        )
 
 @app.delete("/thermostats/{tid}/schedule/{sid}")
 def del_schedule(tid: int, sid: int, user: User = Depends(get_current_user)):
@@ -334,6 +530,39 @@ def del_schedule(tid: int, sid: int, user: User = Depends(get_current_user)):
             raise HTTPException(404, "Brak wpisu")
         s.delete(e); s.commit()
         return {"ok": True}
+
+@app.put("/thermostats/{tid}/schedule/{sid}", response_model=ScheduleOut)
+def update_schedule(tid: int, sid: int, data: ScheduleIn, user: User = Depends(get_current_user)):
+    if not (0 <= data.weekday <= 6):
+        raise HTTPException(400, "weekday 0..6")
+    with Session(engine) as s:
+        t = s.get(Thermostat, tid)
+        if not t or t.owner_id != user.id:
+            raise HTTPException(404, "Brak termostatu")
+        
+        e = s.get(ScheduleEntry, sid)
+        if not e or e.thermostat_id != tid:
+            raise HTTPException(404, "Brak wpisu")
+        
+        # Sprawdź czy template_id istnieje (jeśli podane)
+        if data.template_id is not None:
+            template = s.get(ScheduleTemplate, data.template_id)
+            if not template or template.thermostat_id != tid:
+                raise HTTPException(404, "Brak szablonu")
+        
+        e.template_id = data.template_id
+        e.weekday = data.weekday
+        e.start = hhmm_to_time(data.start)
+        e.end = hhmm_to_time(data.end)
+        e.target_temp_c = data.target_temp_c
+        s.add(e)
+        s.commit()
+        s.refresh(e)
+        
+        return ScheduleOut(
+            id=e.id, weekday=e.weekday, start=data.start, end=data.end,
+            target_temp_c=e.target_temp_c, template_id=e.template_id
+        )
 
 # ------------------ Endpointy dla URZĄDZENIA (RP2350) ------------------
 
