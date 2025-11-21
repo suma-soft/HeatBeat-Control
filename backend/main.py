@@ -14,7 +14,8 @@ from fastapi import FastAPI, Depends, HTTPException, status, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from sqlmodel import SQLModel, Field, create_engine, Session, select
+from sqlmodel import SQLModel, Field, create_engine, Session, select, delete
+from sqlalchemy import text
 from passlib.context import CryptContext
 import jwt
 
@@ -133,6 +134,18 @@ class ReadingOut(BaseModel):
     window_open_detected: Optional[bool]
     created_at: datetime
 
+class ThermostatCreate(BaseModel):
+    name: str
+
+class ThermostatOut(BaseModel):
+    id: int
+    name: str
+    owner_id: Optional[int]
+    created_at: Optional[datetime] = None
+
+class ThermostatUpdate(BaseModel):
+    name: str
+
 class ScheduleIn(BaseModel):
     weekday: int
     start: str  # "HH:MM"
@@ -177,9 +190,9 @@ class ScheduleBulkOut(BaseModel):
 def create_db():
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
-        u = s.exec(select(User).where(User.email == "admin@example.com")).first()
+        u = s.exec(select(User).where(User.email == "admin@heatbeat.pl")).first()
         if not u:
-            u = User(email="admin@example.com", password_hash=pwd_context.hash("admin123"))
+            u = User(email="admin@heatbeat.pl", password_hash=pwd_context.hash("admin123"))
             s.add(u)
             s.commit()
             s.refresh(u)
@@ -267,8 +280,9 @@ def me(user: User = Depends(get_current_user)):
 
 @app.get("/thermostats", response_model=List[dict])
 def list_thermostats(user: User = Depends(get_current_user)):
+    """Lista termostatów użytkownika - wymaga autoryzacji"""
     with Session(engine) as s:
-        rows = s.exec(select(Thermostat).where(Thermostat.owner_id == user.id)).all()
+        rows = s.exec(select(Thermostat).where(Thermostat.owner_id == user.id)).all()  # Tylko termostaty użytkownika
         out = []
         for t in rows:
             sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == t.id)).first()
@@ -284,10 +298,10 @@ def list_thermostats(user: User = Depends(get_current_user)):
         return out
 
 @app.get("/thermostats/{tid}/settings", response_model=SettingsOut)
-def get_settings(tid: int, user: User = Depends(get_current_user)):
+def get_settings(tid: int):
     with Session(engine) as s:
         t = s.get(Thermostat, tid)
-        if not t or t.owner_id != user.id:
+        if not t:
             raise HTTPException(404, "Brak termostatu")
         sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid)).first()
         if not sett:
@@ -316,10 +330,10 @@ def update_settings(tid: int, data: SettingsIn, user: User = Depends(get_current
         return SettingsOut(target_temp_c=sett.target_temp_c, mode=sett.mode, last_source=sett.last_source, updated_at=sett.updated_at)
 
 @app.get("/thermostats/{tid}/readings", response_model=List[ReadingOut])
-def get_readings(tid: int, limit: int = 50, user: User = Depends(get_current_user)):
+def get_readings(tid: int, limit: int = 50):
     with Session(engine) as s:
         t = s.get(Thermostat, tid)
-        if not t or t.owner_id != user.id:
+        if not t:
             raise HTTPException(404, "Brak termostatu")
         q = s.exec(select(Reading).where(Reading.thermostat_id == tid).order_by(Reading.created_at.desc()).limit(limit)).all()
         return [
@@ -330,6 +344,100 @@ def get_readings(tid: int, limit: int = 50, user: User = Depends(get_current_use
             )
             for r in q
         ]
+
+# ------------------ CRUD Termostaty ------------------
+
+@app.post("/thermostats", response_model=ThermostatOut)
+def create_thermostat(data: ThermostatCreate, user: User = Depends(get_current_user)):
+    """Dodaj nowy termostat - wymaga autoryzacji"""
+    with Session(engine) as s:
+        # Sprawdź czy nazwa już istnieje dla tego użytkownika
+        existing = s.exec(select(Thermostat).where(
+            Thermostat.name == data.name, 
+            Thermostat.owner_id == user.id
+        )).first()
+        if existing:
+            raise HTTPException(400, f"Termostat o nazwie '{data.name}' już istnieje")
+            
+        # Utwórz nowy termostat
+        thermostat = Thermostat(name=data.name, owner_id=user.id)
+        s.add(thermostat)
+        s.commit()
+        s.refresh(thermostat)
+        
+        # Utwórz domyślne ustawienia
+        settings = ThermostatSetting(
+            thermostat_id=thermostat.id,
+            target_temp_c=21.0,
+            mode="auto",
+            last_source="app"
+        )
+        s.add(settings)
+        s.commit()
+        
+        return ThermostatOut(
+            id=thermostat.id,
+            name=thermostat.name,
+            owner_id=thermostat.owner_id,
+            created_at=datetime.utcnow()
+        )
+
+@app.put("/thermostats/{tid}", response_model=ThermostatOut)
+def update_thermostat(tid: int, data: ThermostatUpdate, user: User = Depends(get_current_user)):
+    """Aktualizuj termostat - wymaga autoryzacji"""
+    with Session(engine) as s:
+        thermostat = s.get(Thermostat, tid)
+        if not thermostat or thermostat.owner_id != user.id:
+            raise HTTPException(404, "Brak termostatu")
+            
+        # Sprawdź czy nowa nazwa już istnieje dla tego użytkownika (oprócz aktualnego termostatu)
+        existing = s.exec(select(Thermostat).where(
+            Thermostat.name == data.name,
+            Thermostat.owner_id == user.id,
+            Thermostat.id != tid
+        )).first()
+        if existing:
+            raise HTTPException(400, f"Termostat o nazwie '{data.name}' już istnieje")
+            
+        thermostat.name = data.name
+        s.add(thermostat)
+        s.commit()
+        s.refresh(thermostat)
+        
+        return ThermostatOut(
+            id=thermostat.id,
+            name=thermostat.name,
+            owner_id=thermostat.owner_id
+        )
+
+@app.delete("/thermostats/{tid}")
+def delete_thermostat(tid: int, user: User = Depends(get_current_user)):
+    """Usuń termostat - wymaga autoryzacji"""
+    with Session(engine) as s:
+        thermostat = s.get(Thermostat, tid)
+        if not thermostat or thermostat.owner_id != user.id:
+            raise HTTPException(404, "Brak termostatu")
+            
+        # Usuń powiązane dane
+        # 1. Usuń odczyty
+        s.exec(delete(Reading).where(Reading.thermostat_id == tid))
+        
+        # 2. Usuń wpisy harmonogramów
+        s.exec(delete(ScheduleEntry).where(ScheduleEntry.thermostat_id == tid))
+        
+        # 3. Usuń szablony harmonogramów
+        s.exec(delete(ScheduleTemplate).where(ScheduleTemplate.thermostat_id == tid))
+        
+        # 4. Usuń ustawienia
+        s.exec(delete(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid))
+        
+        # 5. Usuń sam termostat
+        s.delete(thermostat)
+        s.commit()
+        
+        return {"message": f"Termostat '{thermostat.name}' został usunięty"}
+
+# ------------------ Harmonogramy ------------------
 
 @app.get("/thermostats/{tid}/schedule", response_model=List[ScheduleOut])
 def list_schedule(tid: int, template_id: Optional[int] = None, user: User = Depends(get_current_user)):
@@ -654,6 +762,214 @@ def device_set_target_temp(tid: int, data: TargetTempIn):
             "target_temp_c": sett.target_temp_c, 
             "source": sett.last_source,
             "updated_at": sett.updated_at.isoformat()
+        }
+
+# ------------------ Debug/Admin ------------------
+@app.put("/admin/thermostats/{tid}/owner/{user_id}")
+def assign_thermostat_owner(tid: int, user_id: int):
+    """DEBUG: Przypisz termostat do użytkownika - tylko do rozwoju!"""
+    with Session(engine) as s:
+        thermostat = s.get(Thermostat, tid)
+        if not thermostat:
+            raise HTTPException(404, "Termostat nie istnieje")
+        
+        user = s.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "Użytkownik nie istnieje")
+            
+        thermostat.owner_id = user_id
+        s.add(thermostat)
+        s.commit()
+        
+        return {"message": f"Termostat {tid} przypisany do użytkownika {user.email}"}
+
+@app.put("/admin/users/{user_id}/email")
+def update_user_email(user_id: int, new_email: str = Body(..., embed=True)):
+    """DEBUG: Zmień email użytkownika - tylko do rozwoju!"""
+    with Session(engine) as s:
+        user = s.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "Użytkownik nie istnieje")
+        
+        # Sprawdź czy nowy email już istnieje
+        existing = s.exec(select(User).where(User.email == new_email)).first()
+        if existing and existing.id != user_id:
+            raise HTTPException(400, f"Email {new_email} jest już zajęty")
+            
+        old_email = user.email
+        user.email = new_email
+        s.add(user)
+        s.commit()
+        
+        return {"message": f"Email użytkownika zmieniony z {old_email} na {new_email}"}
+
+@app.get("/admin/users")
+def list_all_users():
+    """DEBUG: Lista wszystkich użytkowników - tylko do rozwoju!"""
+    with Session(engine) as s:
+        users = s.exec(select(User)).all()
+        return [{"id": u.id, "email": u.email, "is_active": u.is_active} for u in users]
+
+@app.delete("/admin/users/{user_id}")
+def delete_user(user_id: int):
+    """DEBUG: Usuń użytkownika wraz z jego termostatami - tylko do rozwoju!"""
+    with Session(engine) as s:
+        user = s.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "Użytkownik nie istnieje")
+        
+        if user.email == "admin@example.com":
+            raise HTTPException(400, "Nie można usunąć głównego admina")
+        
+        # Znajdź wszystkie termostaty użytkownika
+        user_thermostats = s.exec(select(Thermostat).where(Thermostat.owner_id == user_id)).all()
+        
+        deleted_thermostats = []
+        for thermostat in user_thermostats:
+            tid = thermostat.id
+            # Usuń powiązane dane termostatu
+            s.exec(delete(Reading).where(Reading.thermostat_id == tid))
+            s.exec(delete(ScheduleEntry).where(ScheduleEntry.thermostat_id == tid))
+            s.exec(delete(ScheduleTemplate).where(ScheduleTemplate.thermostat_id == tid))
+            s.exec(delete(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid))
+            s.delete(thermostat)
+            deleted_thermostats.append(f"{tid}: {thermostat.name}")
+        
+        # Usuń użytkownika
+        user_email = user.email
+        s.delete(user)
+        s.commit()
+        
+        return {
+            "message": f"Użytkownik {user_email} usunięty",
+            "deleted_thermostats": deleted_thermostats
+        }
+
+@app.post("/admin/cleanup")
+def cleanup_database():
+    """DEBUG: Usuń wszystkich użytkowników oprócz admin@example.com - tylko do rozwoju!"""
+    with Session(engine) as s:
+        # Znajdź wszystkich użytkowników oprócz admina
+        users_to_delete = s.exec(select(User).where(User.email != "admin@example.com")).all()
+        
+        deleted_users = []
+        deleted_thermostats = []
+        
+        for user in users_to_delete:
+            user_id = user.id
+            user_email = user.email
+            
+            # Znajdź wszystkie termostaty użytkownika
+            user_thermostats = s.exec(select(Thermostat).where(Thermostat.owner_id == user_id)).all()
+            
+            for thermostat in user_thermostats:
+                tid = thermostat.id
+                # Usuń powiązane dane termostatu
+                s.exec(delete(Reading).where(Reading.thermostat_id == tid))
+                s.exec(delete(ScheduleEntry).where(ScheduleEntry.thermostat_id == tid))
+                s.exec(delete(ScheduleTemplate).where(ScheduleTemplate.thermostat_id == tid))
+                s.exec(delete(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid))
+                s.delete(thermostat)
+                deleted_thermostats.append(f"{tid}: {thermostat.name}")
+            
+            # Usuń użytkownika
+            s.delete(user)
+            deleted_users.append(f"{user_id}: {user_email}")
+        
+        s.commit()
+        
+        return {
+            "message": f"Usunięto {len(deleted_users)} użytkowników",
+            "deleted_users": deleted_users,
+            "deleted_thermostats": deleted_thermostats
+        }
+
+# ------------------ Admin - Tworzenie termostatu z określonym ID ------------------
+@app.post("/admin/thermostats/create-with-id", response_model=ThermostatOut)
+def create_thermostat_with_id(
+    thermostat_id: int, 
+    name: str, 
+    user_id: int,
+    user: User = Depends(get_current_user)
+):
+    """Stwórz termostat z określonym ID - tylko dla administratora"""
+    # Sprawdź czy użytkownik to admin
+    if user.email != "admin@example.com":
+        raise HTTPException(403, "Tylko administrator może tworzyć termostaty z określonym ID")
+        
+    with Session(engine) as s:
+        # Sprawdź czy ID jest już zajęte
+        existing = s.get(Thermostat, thermostat_id)
+        if existing:
+            raise HTTPException(400, f"Termostat z ID {thermostat_id} już istnieje")
+        
+        # Sprawdź czy użytkownik istnieje
+        target_user = s.get(User, user_id)
+        if not target_user:
+            raise HTTPException(404, f"Użytkownik z ID {user_id} nie istnieje")
+        
+        # Sprawdź czy nazwa już istnieje dla tego użytkownika
+        existing_name = s.exec(select(Thermostat).where(
+            Thermostat.name == name,
+            Thermostat.owner_id == user_id
+        )).first()
+        if existing_name:
+            raise HTTPException(400, f"Termostat o nazwie '{name}' już istnieje dla tego użytkownika")
+        
+        # Tworzymy nowy termostat normalnie
+        thermostat = Thermostat(name=name, owner_id=user_id)
+        s.add(thermostat)
+        s.flush()  # Żeby uzyskać wygenerowane ID
+        
+        # Teraz ręcznie zmieniamy ID
+        # Usuń z sesji aby można było zmienić ID
+        s.expunge(thermostat)
+        
+        # Użyj surowego SQL do wstawienia z określonym ID
+        s.execute(text(
+            "DELETE FROM thermostat WHERE id = :old_id"
+        ), {"old_id": thermostat.id})
+        
+        s.execute(text(
+            "INSERT INTO thermostat (id, name, owner_id) VALUES (:id, :name, :owner_id)"
+        ), {"id": thermostat_id, "name": name, "owner_id": user_id})
+        
+        # Tworzenie domyślnych ustawień
+        settings = ThermostatSetting(
+            thermostat_id=thermostat_id,
+            target_temp_c=21.0,
+            mode="auto",
+            last_source="app"
+        )
+        s.add(settings)
+        
+        s.commit()
+        
+        # Zwróć utworzony termostat
+        thermostat = s.get(Thermostat, thermostat_id)
+        return ThermostatOut(
+            id=thermostat.id,
+            name=thermostat.name,
+            owner_id=thermostat.owner_id,
+            created_at=datetime.utcnow()
+        )
+
+# ------------------ Dostępne ID termostatów ------------------
+@app.get("/available-ids")
+def get_available_ids(user: User = Depends(get_current_user)):
+    """Zwraca dostępne ID termostatów (1-100) które nie są zajęte"""
+    with Session(engine) as s:
+        # Pobierz wszystkie zajęte ID
+        used_ids = s.exec(select(Thermostat.id)).all()
+        used_ids_set = set(used_ids)
+        
+        # Wygeneruj listę dostępnych ID (1-100)
+        available_ids = [i for i in range(1, 101) if i not in used_ids_set]
+        
+        return {
+            "available_ids": available_ids[:20],  # Pokaż pierwsze 20
+            "used_ids": sorted(used_ids),
+            "total_available": len(available_ids)
         }
 
 # ------------------ Zdrowie ------------------

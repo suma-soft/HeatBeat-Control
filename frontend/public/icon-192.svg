@@ -1,0 +1,5 @@
+<!-- Placeholder dla ikony PWA 192x192 -->
+<svg width="192" height="192" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" fill="#059669" rx="32"/>
+  <path d="M48 96c0-26.5 21.5-48 48-48s48 21.5 48 48v24h12c6.6 0 12 5.4 12 12v36c0 6.6-5.4 12-12 12H36c-6.6 0-12-5.4-12-12v-36c0-6.6 5.4-12 12-12h12V96zm36 0c0-6.6 5.4-12 12-12s12 5.4 12 12v24H84V96z" fill="white"/>
+</svg>

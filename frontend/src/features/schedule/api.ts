@@ -200,5 +200,44 @@ export const scheduleUtils = {
     
     // W przeciwnym razie pokaż listę
     return sorted.map(d => scheduleUtils.getWeekdayName(d, true)).join(', ');
+  },
+
+  // Sprawdź czy wpisy czasowe się nakładają
+  checkTimeOverlap: (entries: ScheduleEntry[], newEntry: { weekday?: number; weekdays?: number[]; start: string; end: string }, excludeId?: number): { hasOverlap: boolean; conflictingEntry?: ScheduleEntry } => {
+    const timeToMinutes = (time: string): number => {
+      const [hours, minutes] = time.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+
+    const newStart = timeToMinutes(newEntry.start);
+    const newEnd = timeToMinutes(newEntry.end);
+    
+    // Określ dni do sprawdzenia
+    const daysToCheck = newEntry.weekdays && newEntry.weekdays.length > 0 
+      ? newEntry.weekdays 
+      : [newEntry.weekday || 0];
+
+    for (const day of daysToCheck) {
+      // Znajdź wpisy dla tego dnia
+      const dayEntries = entries.filter(e => 
+        e.weekday === day && 
+        (excludeId === undefined || e.id !== excludeId)
+      );
+
+      for (const entry of dayEntries) {
+        const entryStart = timeToMinutes(entry.start);
+        const entryEnd = timeToMinutes(entry.end);
+
+        // Sprawdź nakładanie się
+        if (newStart < entryEnd && newEnd > entryStart) {
+          return {
+            hasOverlap: true,
+            conflictingEntry: entry
+          };
+        }
+      }
+    }
+
+    return { hasOverlap: false };
   }
 };

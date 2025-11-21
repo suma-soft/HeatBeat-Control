@@ -52,8 +52,9 @@ export default function ScheduleManager({ thermostatId, thermostatName, token }:
   const [editingTemplate, setEditingTemplate] = useState<ScheduleTemplate | null>(null);
 
   // Form states
-  const [entryForm, setEntryForm] = useState<ScheduleEntryInput>({
+  const [entryForm, setEntryForm] = useState<ScheduleEntryInput & { weekdays?: number[] }>({
     weekday: 0,
+    weekdays: [],
     start: '08:00',
     end: '22:00',
     target_temp_c: 21.0,
@@ -121,12 +122,45 @@ export default function ScheduleManager({ thermostatId, thermostatName, token }:
         return;
       }
 
+      // Sprawdź nakładanie się wpisów czasowych
+      const overlapCheck = scheduleUtils.checkTimeOverlap(
+        entries,
+        entryForm,
+        editingEntry?.id
+      );
+      
+      if (overlapCheck.hasOverlap && overlapCheck.conflictingEntry) {
+        const conflictDay = scheduleUtils.getWeekdayName(overlapCheck.conflictingEntry.weekday);
+        showError(`Nakładanie się z istniejącym wpisem w ${conflictDay} (${overlapCheck.conflictingEntry.start} - ${overlapCheck.conflictingEntry.end})`);
+        return;
+      }
+
       if (editingEntry) {
+        // Edycja pojedynczego wpisu
         await scheduleEntryAPI.update(thermostatId, editingEntry.id, entryForm, token);
         showSuccess('Wpis zaktualizowany');
       } else {
-        await scheduleEntryAPI.create(thermostatId, entryForm, token);
-        showSuccess('Wpis dodany');
+        // Tworzenie nowego wpisu - używamy bulk API jeśli wybrano wiele dni
+        const weekdays = entryForm.weekdays && entryForm.weekdays.length > 0 
+          ? entryForm.weekdays 
+          : [entryForm.weekday];
+        
+        if (weekdays.length > 1) {
+          // Wiele dni - użyj bulk API
+          const bulkData: ScheduleBulkInput = {
+            weekdays,
+            start: entryForm.start,
+            end: entryForm.end,
+            target_temp_c: entryForm.target_temp_c,
+            template_id: entryForm.template_id,
+          };
+          await scheduleEntryAPI.createBulk(thermostatId, bulkData, token);
+          showSuccess(`Dodano ${weekdays.length} wpisów`);
+        } else {
+          // Jeden dzień - zwykłe API
+          await scheduleEntryAPI.create(thermostatId, { ...entryForm, weekday: weekdays[0] }, token);
+          showSuccess('Wpis dodany');
+        }
       }
 
       setShowEntryModal(false);
@@ -216,12 +250,18 @@ export default function ScheduleManager({ thermostatId, thermostatName, token }:
 
   // Modal openers
   const openAddEntry = () => {
+    // Znajdź ostatnio utworzony szablon (najwyższe ID)
+    const lastTemplate = templates.length > 0 
+      ? templates.reduce((prev, current) => (prev.id > current.id ? prev : current))
+      : null;
+    
     setEntryForm({
       weekday: 0,
+      weekdays: [],
       start: '08:00',
       end: '22:00',
       target_temp_c: 21.0,
-      template_id: selectedTemplate,
+      template_id: selectedTemplate || lastTemplate?.id || null,
     });
     setEditingEntry(null);
     setShowEntryModal(true);
@@ -629,13 +669,21 @@ function EntryModal({
   onCancel, 
   onChange 
 }: {
-  form: ScheduleEntryInput;
+  form: ScheduleEntryInput & { weekdays?: number[] };
   templates: ScheduleTemplate[];
   editing: boolean;
   onSave: () => void;
   onCancel: () => void;
-  onChange: (form: ScheduleEntryInput) => void;
+  onChange: (form: ScheduleEntryInput & { weekdays?: number[] }) => void;
 }) {
+  const toggleWeekday = (day: number) => {
+    const weekdays = form.weekdays || [];
+    const newWeekdays = weekdays.includes(day)
+      ? weekdays.filter(d => d !== day)
+      : [...weekdays, day].sort();
+    onChange({ ...form, weekdays: newWeekdays });
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-md w-full p-6">
@@ -655,17 +703,43 @@ function EntryModal({
           {/* Dzień tygodnia */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Dzień tygodnia
+              {editing ? 'Dzień tygodnia' : 'Dni tygodnia'}
             </label>
-            <select
-              value={form.weekday}
-              onChange={(e) => onChange({ ...form, weekday: Number(e.target.value) })}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              {scheduleUtils.weekdayNames.map((name, index) => (
-                <option key={index} value={index}>{name}</option>
-              ))}
-            </select>
+            
+            {editing ? (
+              // Edycja - pojedynczy wybór
+              <select
+                value={form.weekday}
+                onChange={(e) => onChange({ ...form, weekday: Number(e.target.value) })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                {scheduleUtils.weekdayNames.map((name, index) => (
+                  <option key={index} value={index}>{name}</option>
+                ))}
+              </select>
+            ) : (
+              // Dodawanie - wielokrotny wybór
+              <div className="grid grid-cols-2 gap-2">
+                {scheduleUtils.weekdayNames.map((name, index) => (
+                  <label
+                    key={index}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                      (form.weekdays || []).includes(index)
+                        ? 'bg-primary-50 border-primary-300 text-primary-700'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={(form.weekdays || []).includes(index)}
+                      onChange={() => toggleWeekday(index)}
+                      className="w-4 h-4 text-primary-600 rounded focus:ring-2 focus:ring-primary-500"
+                    />
+                    <span className="text-sm font-medium">{name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Godziny */}
@@ -678,6 +752,7 @@ function EntryModal({
                 type="time"
                 value={form.start}
                 onChange={(e) => onChange({ ...form, start: e.target.value })}
+                step="900"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
@@ -689,6 +764,7 @@ function EntryModal({
                 type="time"
                 value={form.end}
                 onChange={(e) => onChange({ ...form, end: e.target.value })}
+                step="900"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
@@ -873,6 +949,7 @@ function BulkModal({
                 type="time"
                 value={form.start}
                 onChange={(e) => onChange({ ...form, start: e.target.value })}
+                step="900"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
@@ -884,6 +961,7 @@ function BulkModal({
                 type="time"
                 value={form.end}
                 onChange={(e) => onChange({ ...form, end: e.target.value })}
+                step="900"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>

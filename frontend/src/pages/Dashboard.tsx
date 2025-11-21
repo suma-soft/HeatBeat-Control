@@ -12,7 +12,9 @@ import {
   FiClock,
   FiActivity,
   FiUser,
-  FiCalendar
+  FiCalendar,
+  FiEdit,
+  FiTrash2
 } from "react-icons/fi";
 import { ScheduleManager } from "../features/schedule";
 
@@ -65,7 +67,19 @@ function approxEq(a: number, b: number) {
 }
 function formatDate(iso?: string) {
   if (!iso) return "-";
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  try { 
+    return new Date(iso).toLocaleString('pl-PL', { 
+      timeZone: 'Europe/Warsaw',
+      day: '2-digit',
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }); 
+  } catch { 
+    return iso; 
+  }
 }
 
 function getTemperatureStatus(current: number, target: number) {
@@ -250,6 +264,106 @@ export default function Dashboard() {
     }
   };
 
+  // --- zarządzanie termostatami ---
+  const [showAddThermostat, setShowAddThermostat] = useState(false);
+  const [newThermostatName, setNewThermostatName] = useState("");
+  const [selectedThermostatId, setSelectedThermostatId] = useState<number | null>(null);
+  const [useAutoId, setUseAutoId] = useState(true);
+  const [availableIds, setAvailableIds] = useState<number[]>([]);
+  const [editingThermostat, setEditingThermostat] = useState<{id: number, name: string} | null>(null);
+
+  const loadAvailableIds = async () => {
+    try {
+      const r = await authFetch(`${apiBase}/available-ids`);
+      if (r.ok) {
+        const data = await r.json();
+        setAvailableIds(data.available_ids || []);
+      }
+    } catch (e) {
+      console.error("Nie udało się załadować dostępnych ID:", e);
+    }
+  };
+
+  const addThermostat = async () => {
+    if (!newThermostatName.trim()) return;
+    if (!useAutoId && !selectedThermostatId) {
+      setGlobalErr("Wybierz ID termostatu");
+      return;
+    }
+    
+    setGlobalErr(null);
+    try {
+      let url: string;
+      let body: any;
+      
+      if (useAutoId) {
+        // Zwykłe dodawanie termostatu z automatycznym ID
+        url = `${apiBase}/thermostats`;
+        body = JSON.stringify({ name: newThermostatName.trim() });
+      } else {
+        // Admin endpoint z określonym ID
+        url = `${apiBase}/admin/thermostats/create-with-id?thermostat_id=${selectedThermostatId}&name=${encodeURIComponent(newThermostatName.trim())}&user_id=${me!.id}`;
+        body = null;
+      }
+      
+      const r = await authFetch(url, {
+        method: "POST",
+        headers: useAutoId ? { "Content-Type": "application/json" } : {},
+        body: body,
+      });
+      if (!r.ok) throw new Error((await r.text().catch(()=>"")) || `Błąd dodawania termostatu (${r.status})`);
+      
+      setNewThermostatName("");
+      setSelectedThermostatId(null);
+      setUseAutoId(true);
+      setShowAddThermostat(false);
+      await loadThermostats(); // Przeładuj listę
+    } catch (e: any) {
+      setGlobalErr(e?.message || "Nie udało się dodać termostatu.");
+    }
+  };
+
+  const updateThermostat = async (tid: number, name: string) => {
+    if (!name.trim()) return;
+    setGlobalErr(null);
+    try {
+      const r = await authFetch(`${apiBase}/thermostats/${tid}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (!r.ok) throw new Error((await r.text().catch(()=>"")) || `Błąd aktualizacji termostatu (${r.status})`);
+      
+      setEditingThermostat(null);
+      await loadThermostats(); // Przeładuj listę
+    } catch (e: any) {
+      setGlobalErr(e?.message || "Nie udało się zaktualizować termostatu.");
+    }
+  };
+
+  const deleteThermostat = async (tid: number, name: string) => {
+    if (!confirm(`Czy na pewno chcesz usunąć termostat "${name}"?\n\nTo spowoduje usunięcie wszystkich odczytów, ustawień i harmonogramów tego termostatu.`)) {
+      return;
+    }
+    
+    setGlobalErr(null);
+    try {
+      const r = await authFetch(`${apiBase}/thermostats/${tid}`, {
+        method: "DELETE",
+      });
+      if (!r.ok) throw new Error((await r.text().catch(()=>"")) || `Błąd usuwania termostatu (${r.status})`);
+      
+      await loadThermostats(); // Przeładuj listę
+      // Jeśli usuniętym termostatem był aktualnie wybrany, wyczyść selekcję
+      if (selectedThermo?.id === tid) {
+        setSelectedThermo(null);
+        setActiveView("dashboard");
+      }
+    } catch (e: any) {
+      setGlobalErr(e?.message || "Nie udało się usunąć termostatu.");
+    }
+  };
+
   // --- kliknięcia + / − z logiką konfliktu ---
   const bump = (tid: number, delta: number) => {
     setThermos(arr => {
@@ -421,16 +535,30 @@ export default function Dashboard() {
         {activeView === "dashboard" && (
           <section className="mb-8 animate-fade-in">
             <div className="glass-card p-6 rounded-2xl">
-              <div className="flex items-center gap-4 mb-2">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
-                  <FiUser className="w-6 h-6 text-white" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
+                    <FiUser className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">
+                      Witaj{me?.email ? `, ${me.email.split('@')[0]}` : ""}! 👋
+                    </h2>
+                    <p className="text-white/70">Zarządzaj swoimi termostatami w jednym miejscu</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white">
-                    Witaj{me?.email ? `, ${me.email.split('@')[0]}` : ""}! 👋
-                  </h2>
-                  <p className="text-white/70">Zarządzaj swoimi termostatami w jednym miejscu</p>
-                </div>
+                
+                {/* Add thermostat button */}
+                <button
+                  onClick={() => {
+                    setShowAddThermostat(true);
+                    loadAvailableIds();
+                  }}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  <FiPlus className="w-4 h-4" />
+                  Dodaj termostat
+                </button>
               </div>
             </div>
           </section>
@@ -496,6 +624,8 @@ export default function Dashboard() {
                   index={index} 
                   onBump={bump}
                   onRefresh={loadLastReading}
+                  onEdit={(id, name) => setEditingThermostat({ id, name })}
+                  onDelete={deleteThermostat}
                 />
               ))}
             </div>
@@ -519,6 +649,138 @@ export default function Dashboard() {
           )
         )}
       </main>
+      
+      {/* Modal dodawania termostatu */}
+      {showAddThermostat && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Dodaj nowy termostat</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nazwa termostatu
+              </label>
+              <input
+                type="text"
+                value={newThermostatName}
+                onChange={(e) => setNewThermostatName(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="np. Salon, Sypialnia..."
+                autoFocus
+              />
+            </div>
+
+            {/* Opcja wyboru ID */}
+            <div className="mb-4">
+              <div className="flex items-center mb-3">
+                <input
+                  type="checkbox"
+                  id="useAutoId"
+                  checked={useAutoId}
+                  onChange={(e) => {
+                    setUseAutoId(e.target.checked);
+                    if (e.target.checked) setSelectedThermostatId(null);
+                  }}
+                  className="mr-2"
+                />
+                <label htmlFor="useAutoId" className="text-sm font-medium text-gray-700">
+                  Automatyczne ID
+                </label>
+              </div>
+              
+              {!useAutoId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Wybierz ID termostatu
+                  </label>
+                  {availableIds.length > 0 ? (
+                    <select
+                      value={selectedThermostatId || ""}
+                      onChange={(e) => setSelectedThermostatId(Number(e.target.value) || null)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="">Wybierz ID...</option>
+                      {availableIds.map(id => (
+                        <option key={id} value={id}>ID {id}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-sm text-gray-500 p-3 border border-gray-300 rounded-lg bg-gray-50">
+                      Ładowanie dostępnych ID...
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Wybierz konkretne ID dla urządzeń fizycznych lub innych specjalnych zastosowań.
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowAddThermostat(false);
+                  setNewThermostatName("");
+                  setSelectedThermostatId(null);
+                  setUseAutoId(true);
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={addThermostat}
+                disabled={
+                  !newThermostatName.trim() || 
+                  (!useAutoId && !selectedThermostatId)
+                }
+                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Dodaj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal edycji termostatu */}
+      {editingThermostat && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Edytuj termostat</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nazwa termostatu
+              </label>
+              <input
+                type="text"
+                value={editingThermostat.name}
+                onChange={(e) => setEditingThermostat({ ...editingThermostat, name: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="np. Salon, Sypialnia..."
+                autoFocus
+              />
+            </div>
+            
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setEditingThermostat(null)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={() => updateThermostat(editingThermostat.id, editingThermostat.name)}
+                disabled={!editingThermostat.name.trim()}
+                className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -528,12 +790,16 @@ function ThermostatCard({
   thermostat: t, 
   index, 
   onBump, 
-  onRefresh 
+  onRefresh,
+  onEdit,
+  onDelete 
 }: {
   thermostat: ThermostatView;
   index: number;
   onBump: (tid: number, delta: number) => void;
   onRefresh: (tid: number) => void;
+  onEdit: (tid: number, name: string) => void;
+  onDelete: (tid: number, name: string) => void;
 }) {
   return (
     <div 
@@ -551,13 +817,33 @@ function ThermostatCard({
           </h3>
           <span className="text-sm text-gray-500">#{t.id}</span>
         </div>
-        <button
-          onClick={() => onRefresh(t.id)}
-          className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors duration-200"
-          disabled={t.loading}
-        >
-          <FiRefreshCw className={`w-4 h-4 text-gray-600 ${t.loading ? 'animate-spin' : ''}`} />
-        </button>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onEdit(t.id, t.name)}
+            className="p-2 rounded-lg bg-blue-100 hover:bg-blue-200 transition-colors duration-200 border border-blue-300"
+            title="Edytuj termostat"
+          >
+            <FiEdit className="w-5 h-5 text-blue-600" />
+          </button>
+          
+          <button
+            onClick={() => onDelete(t.id, t.name)}
+            className="p-2 rounded-lg bg-red-100 hover:bg-red-200 transition-colors duration-200 border border-red-300"
+            title="Usuń termostat"
+          >
+            <FiTrash2 className="w-5 h-5 text-red-600" />
+          </button>
+          
+          <button
+            onClick={() => onRefresh(t.id)}
+            className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors duration-200 border border-gray-300"
+            title="Odśwież dane"
+            disabled={t.loading}
+          >
+            <FiRefreshCw className={`w-5 h-5 text-gray-600 ${t.loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Temperature Control */}
