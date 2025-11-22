@@ -426,7 +426,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gradient-primary">
       {/* Modern Navigation Header */}
       <header className="nav-modern">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="nav-brand">
               <div className="nav-icon">
@@ -438,19 +438,20 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               {/* Navigation tabs */}
-              <div className="hidden md:flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 <button
                   onClick={() => setActiveView("dashboard")}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-2 py-2 sm:px-4 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                     activeView === "dashboard"
                       ? "bg-white/20 text-white"
                       : "text-white/70 hover:text-white hover:bg-white/10"
                   }`}
                 >
-                  <FiThermometer className="w-4 h-4 inline mr-2" />
-                  Dashboard
+                  <FiThermometer className="w-4 h-4 inline mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Dashboard</span>
+                  <span className="sm:hidden">Dom</span>
                 </button>
                 <button
                   onClick={() => {
@@ -459,14 +460,15 @@ export default function Dashboard() {
                       setSelectedThermo(thermos[0]);
                     }
                   }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-2 py-2 sm:px-4 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                     activeView === "schedule"
                       ? "bg-white/20 text-white"
                       : "text-white/70 hover:text-white hover:bg-white/10"
                   }`}
                 >
-                  <FiCalendar className="w-4 h-4 inline mr-2" />
-                  Harmonogram
+                  <FiCalendar className="w-4 h-4 inline mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Harmonogram</span>
+                  <span className="sm:hidden">Plan</span>
                 </button>
               </div>
 
@@ -511,7 +513,7 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 sm:py-8">
         {/* Error Messages */}
         {meErr && (
           <div className="mb-6 glass-card p-4 rounded-xl border-red-300/30 bg-red-500/20 text-white animate-fade-in">
@@ -541,10 +543,10 @@ export default function Dashboard() {
                     <FiUser className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-white">
+                    <h2 className="text-xl sm:text-2xl font-bold text-white mobile-header">
                       Witaj{me?.email ? `, ${me.email.split('@')[0]}` : ""}! 👋
                     </h2>
-                    <p className="text-white/70">Zarządzaj swoimi termostatami w jednym miejscu</p>
+                    <p className="text-sm sm:text-base text-white/70">Zarządzaj swoimi termostatami w jednym miejscu</p>
                   </div>
                 </div>
                 
@@ -616,7 +618,7 @@ export default function Dashboard() {
               <p className="text-gray-600">Zarejestruj urządzenie lub dodaj w bazie danych</p>
             </div>
           ) : (
-            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 mobile-spacing">
               {thermos.map((t, index) => (
                 <ThermostatCard 
                   key={t.id} 
@@ -803,7 +805,7 @@ function ThermostatCard({
 }) {
   return (
     <div 
-      className="floating-card p-6 animate-fade-in relative overflow-hidden"
+      className="floating-card p-4 sm:p-6 animate-fade-in relative overflow-hidden mobile-thermostat-card"
       style={{ animationDelay: `${index * 0.1}s` }}
     >
       {/* Background decoration */}
@@ -847,10 +849,10 @@ function ThermostatCard({
       </div>
 
       {/* Temperature Control */}
-      <div className="temp-controls mb-6">
+      <div className="flex items-center justify-center gap-6 sm:gap-4 p-8 sm:p-6 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 mb-6">
         <button
           onClick={() => onBump(t.id, -STEP)}
-          className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-white text-xl font-bold
+          className={`w-20 h-20 sm:w-14 sm:h-14 rounded-full border-2 flex items-center justify-center text-white text-3xl sm:text-xl font-bold
                      transition-colors duration-300 shadow-lg
                      ${t.saving 
                        ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
@@ -859,14 +861,14 @@ function ThermostatCard({
           disabled={t.saving}
         >
           {t.saving ? (
-            <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+            <div className="w-6 h-6 sm:w-5 sm:h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
           ) : (
-            <FiMinus className="w-6 h-6" />
+            <FiMinus className="w-8 h-8 sm:w-6 sm:h-6" />
           )}
         </button>
         
         <div className="text-center">
-          <div className="temp-display mb-1">
+          <div className="text-5xl sm:text-4xl font-bold bg-gradient-to-r from-primary-400 to-primary-600 bg-clip-text text-transparent mb-1">
             {t.editTemp.toFixed(1)}°C
           </div>
           <span className="text-white/60 text-xs">Zadana temperatura</span>
@@ -879,7 +881,7 @@ function ThermostatCard({
         
         <button
           onClick={() => onBump(t.id, +STEP)}
-          className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-white text-xl font-bold
+          className={`w-20 h-20 sm:w-14 sm:h-14 rounded-full border-2 flex items-center justify-center text-white text-3xl sm:text-xl font-bold
                      transition-colors duration-300 shadow-lg
                      ${t.saving 
                        ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
@@ -888,9 +890,9 @@ function ThermostatCard({
           disabled={t.saving}
         >
           {t.saving ? (
-            <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+            <div className="w-6 h-6 sm:w-5 sm:h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
           ) : (
-            <FiPlus className="w-6 h-6" />
+            <FiPlus className="w-8 h-8 sm:w-6 sm:h-6" />
           )}
         </button>
       </div>

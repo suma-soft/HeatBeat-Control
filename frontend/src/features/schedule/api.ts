@@ -1,7 +1,9 @@
 // frontend/src/features/schedule/api.ts
 // API functions dla systemu harmonogramów
 
-const API_BASE = ""; // używamy proxy Vite
+import { API_CONFIG } from '../../config';
+
+const API_BASE = ""; // używamy proxy Vite lub config
 
 // Typy
 export type ScheduleEntry = {
@@ -51,7 +53,8 @@ export type ScheduleBulkResult = {
 
 // Helper function dla autoryzacji
 async function apiCall(url: string, options: RequestInit = {}, token?: string) {
-  const response = await fetch(url, {
+  const fullUrl = url.startsWith('http') ? url : API_CONFIG.getUrl(url);
+  const response = await fetch(fullUrl, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

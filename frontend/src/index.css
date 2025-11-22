@@ -84,10 +84,11 @@
   }
   
   .temp-button {
-    @apply w-12 h-12 rounded-full bg-primary-500 border border-primary-600
-           flex items-center justify-center text-white text-xl font-bold
+    @apply w-16 h-16 rounded-full bg-primary-500 border border-primary-600
+           flex items-center justify-center text-white text-2xl font-bold
            hover:bg-primary-600 transform hover:scale-110 transition-all duration-300
-           active:scale-95 shadow-lg hover:shadow-xl;
+           active:scale-95 shadow-lg hover:shadow-xl
+           sm:w-12 sm:h-12 sm:text-xl;
   }
 
   /* Status indicators */
@@ -210,5 +211,54 @@
   
   .temp-indicator.optimal {
     background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+  }
+
+  /* Mobile-specific responsive utilities */
+  @media (max-width: 640px) {
+    .mobile-card {
+      @apply mx-2 my-2 p-4;
+    }
+    
+    .mobile-temp-display {
+      @apply text-6xl font-black mb-4;
+    }
+    
+    .mobile-thermostat-card {
+      @apply p-6 mx-4 rounded-3xl;
+    }
+    
+    .mobile-controls {
+      @apply gap-6 p-8;
+    }
+    
+    .mobile-button {
+      @apply w-20 h-20 text-3xl font-black;
+      min-height: 80px;
+      min-width: 80px;
+      touch-action: manipulation;
+    }
+    
+    .mobile-header {
+      @apply text-xl font-bold mb-6;
+    }
+    
+    .mobile-compact {
+      @apply py-2 px-4 mx-2;
+    }
+    
+    /* Better touch targets */
+    .touch-target {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    
+    /* Reduce excessive spacing on mobile */
+    .mobile-spacing {
+      @apply space-y-3;
+    }
+    
+    .mobile-tight {
+      @apply space-y-2;
+    }
   }
 }

@@ -37,12 +37,36 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      "/auth": "http://backend:8000",
-      "/thermostats": "http://backend:8000",
-      "/device": "http://backend:8000",
-      "/healthz": "http://backend:8000",
-      "/available-ids": "http://backend:8000",
-      "/admin": "http://backend:8000"
+      "/auth": {
+        target: "http://192.168.55.252:8000",
+        changeOrigin: true,
+        secure: false
+      },
+      "/thermostats": {
+        target: "http://192.168.55.252:8000",
+        changeOrigin: true,
+        secure: false
+      },
+      "/device": {
+        target: "http://192.168.55.252:8000",
+        changeOrigin: true,
+        secure: false
+      },
+      "/healthz": {
+        target: "http://192.168.55.252:8000",
+        changeOrigin: true,
+        secure: false
+      },
+      "/available-ids": {
+        target: "http://192.168.55.252:8000",
+        changeOrigin: true,
+        secure: false
+      },
+      "/admin": {
+        target: "http://192.168.55.252:8000",
+        changeOrigin: true,
+        secure: false
+      }
     }
   }
 });
