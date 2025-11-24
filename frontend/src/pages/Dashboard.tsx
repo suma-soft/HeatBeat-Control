@@ -41,6 +41,7 @@ type ReadingOut = {
   humidity_pct?: number | null;
   pressure_hpa?: number | null;
   window_open_detected?: boolean | null;
+  is_heating?: boolean | null;
   created_at: string;
 };
 
@@ -990,6 +991,20 @@ function ThermostatCard({
               </div>
               <div className={`text-sm font-bold ${t.lastReading.window_open_detected ? 'text-red-600' : 'text-green-800'}`}>
                 {t.lastReading.window_open_detected ? "OTWARTE" : "Zamknięte"}
+              </div>
+            </div>
+
+            <div className={`p-3 rounded-xl border hover-lift ${
+              t.lastReading.is_heating 
+                ? 'bg-gradient-to-br from-orange-50 to-red-100 border-orange-200' 
+                : 'bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <FiThermometer className={`w-4 h-4 ${t.lastReading.is_heating ? 'text-orange-600' : 'text-blue-600'}`} />
+                <span className={`text-xs font-medium ${t.lastReading.is_heating ? 'text-orange-700' : 'text-blue-700'}`}>Grzanie</span>
+              </div>
+              <div className={`text-sm font-bold ${t.lastReading.is_heating ? 'text-red-600' : 'text-blue-800'}`}>
+                {t.lastReading.is_heating ? "AKTYWNE" : "Nieaktywne"}
               </div>
             </div>
           </div>

@@ -1,0 +1,14 @@
+# Railway deployment configuration
+[build]
+  builder = "DOCKERFILE"
+  dockerfilePath = "Dockerfile.production"
+
+[deploy]
+  healthcheckPath = "/healthz"
+  healthcheckTimeout = 30
+  restartPolicyType = "ON_FAILURE"
+
+# Environment variables (set in Railway dashboard)
+# DATABASE_URL - will be provided by Railway
+# JWT_SECRET_KEY - generate random secret
+# CORS_ORIGINS - your frontend domain

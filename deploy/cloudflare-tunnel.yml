@@ -1,0 +1,15 @@
+# Cloudflare Tunnel Configuration
+tunnel: your-tunnel-id
+credentials-file: /path/to/credentials.json
+
+ingress:
+  # Route to your local HeatBeat application
+  - hostname: heatbeat.yourdomain.com
+    service: http://localhost:5173
+  
+  # Route API calls to backend
+  - hostname: api.heatbeat.yourdomain.com  
+    service: http://localhost:8000
+    
+  # Catch-all rule (required)
+  - service: http_status:404

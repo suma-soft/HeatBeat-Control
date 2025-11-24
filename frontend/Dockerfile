@@ -4,7 +4,7 @@ WORKDIR /app
 
 # najpierw zależności żeby działał cache
 COPY package*.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # teraz reszta źródeł
 COPY . .

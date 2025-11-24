@@ -7,8 +7,6 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./heatbeat.db
       - JWT_SECRET=dev_secret_change_me
-    volumes:
-      - backend_data:/app
     ports:
       - "8000:8000"
 

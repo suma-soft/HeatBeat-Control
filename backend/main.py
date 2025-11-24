@@ -65,6 +65,7 @@ class Reading(SQLModel, table=True):
     humidity_pct: Optional[float] = None
     pressure_hpa: Optional[float] = None
     window_open_detected: Optional[bool] = False
+    is_heating: Optional[bool] = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class ScheduleTemplate(SQLModel, table=True):
@@ -111,6 +112,7 @@ class ReadingIn(BaseModel):
     humidity_pct: Optional[float] = None
     pressure_hpa: Optional[float] = None
     window_open_detected: Optional[bool] = False
+    is_heating: Optional[bool] = False
 
 class TargetTempIn(BaseModel):
     target_temp_c: float
@@ -125,6 +127,8 @@ class DeviceReading(BaseModel):
     humidity_pct: float  
     pressure_hpa: float
     setpoint_c: float
+    window_open_detected: Optional[bool] = False
+    is_heating: Optional[bool] = False
 
 class ReadingOut(BaseModel):
     id: int
@@ -132,6 +136,7 @@ class ReadingOut(BaseModel):
     humidity_pct: Optional[float]
     pressure_hpa: Optional[float]
     window_open_detected: Optional[bool]
+    is_heating: Optional[bool]
     created_at: datetime
 
 class ThermostatCreate(BaseModel):
@@ -190,9 +195,9 @@ class ScheduleBulkOut(BaseModel):
 def create_db():
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
-        u = s.exec(select(User).where(User.email == "admin@heatbeat.pl")).first()
+        u = s.exec(select(User).where(User.email == "admin@example.com")).first()
         if not u:
-            u = User(email="admin@heatbeat.pl", password_hash=pwd_context.hash("admin123"))
+            u = User(email="admin@example.com", password_hash=pwd_context.hash("admin123"))
             s.add(u)
             s.commit()
             s.refresh(u)
@@ -342,7 +347,7 @@ def get_readings(tid: int, limit: int = 50):
             ReadingOut(
                 id=r.id, temperature_c=r.temperature_c, humidity_pct=r.humidity_pct,
                 pressure_hpa=r.pressure_hpa, window_open_detected=r.window_open_detected,
-                created_at=r.created_at
+                is_heating=r.is_heating, created_at=r.created_at
             )
             for r in q
         ]
@@ -699,7 +704,8 @@ def device_push_reading(tid: int, data: Union[ReadingIn, DeviceReading]):
             temperature_c=data.temperature_c,
             humidity_pct=data.humidity_pct,
             pressure_hpa=data.pressure_hpa,
-            window_open_detected=getattr(data, 'window_open_detected', False)
+            window_open_detected=getattr(data, 'window_open_detected', False),
+            is_heating=getattr(data, 'is_heating', False)
         )
         s.add(r); s.commit(); s.refresh(r)
         return {"ok": True, "id": r.id, "at": r.created_at.isoformat()}
