@@ -743,18 +743,12 @@ def device_push_reading(tid: int, data: Union[ReadingIn, DeviceReading]):
                 time_diff = datetime.utcnow() - sett.updated_at
                 recent_app_change = sett.last_source == "app" and time_diff.total_seconds() < 300  # 5 minut
                 
-                print(f"[DEBUG] Urządzenie próbuje zmienić temp z {sett.target_temp_c}°C na {data.setpoint_c}°C")
-                print(f"[DEBUG] last_source={sett.last_source}, time_diff={time_diff.total_seconds()}s, recent_app_change={recent_app_change}")
-                
                 if not recent_app_change:
                     # Można nadpisać - brak świeżej zmiany z aplikacji
-                    print(f"[DEBUG] NADPISYWANIE temperatury przez urządzenie")
                     sett.target_temp_c = data.setpoint_c
                     sett.last_source = "device"
                     sett.updated_at = datetime.utcnow()
                     s.add(sett)
-                else:
-                    print(f"[DEBUG] BLOKADA nadpisania - świeża zmiana z aplikacji")
         
         r = Reading(
             thermostat_id=tid,
