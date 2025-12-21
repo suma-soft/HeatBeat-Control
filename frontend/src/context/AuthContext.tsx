@@ -59,7 +59,9 @@ const DEFAULT_API_BASE = resolveApiBase();
 /** Typ kontekstu uwierzytelniania */
 type AuthContextType = {
   token: string | null;
+  user: { id: number; email: string } | null;
   apiBase: string;
+  isAdmin: boolean;
   login: (identifier: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -75,6 +77,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
   });
+
+  const [user, setUser] = useState<{ id: number; email: string } | null>(null);
+
+  // Fetch user info when token changes
+  useEffect(() => {
+    if (token) {
+      fetch(`${DEFAULT_API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(res => res.ok ? res.json() : null)
+      .then(userData => setUser(userData))
+      .catch(() => setUser(null));
+    } else {
+      setUser(null);
+    }
+  }, [token]);
+
+  const isAdmin = user?.email === "admin@example.com";
 
   // Debug pomocniczy – możesz zakomentować po testach
   if (typeof window !== "undefined") {
@@ -155,17 +175,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("token");
     } catch {}
     setToken(null);
+    setUser(null);
   };
 
   const value = useMemo<AuthContextType>(
     () => ({
       token,
+      user,
       apiBase: DEFAULT_API_BASE,
+      isAdmin,
       login,
       register,
       logout,
     }),
-    [token]
+    [token, user, isAdmin]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -2,8 +2,5 @@ fastapi==0.115.4
 uvicorn[standard]==0.32.1
 sqlmodel==0.0.25
 passlib[bcrypt]==1.7.4
-pyjwt==2.10.1
+PyJWT==2.10.1
 python-multipart==0.0.15
-
-# JWT (używasz importu 'jwt')
-PyJWT==2.9.0

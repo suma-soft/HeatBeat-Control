@@ -48,7 +48,19 @@ class User(SQLModel, table=True):
 class Thermostat(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = "Salon"
-    owner_id: Optional[int] = Field(default=None, index=True)
+    owner_id: Optional[int] = Field(default=None, index=True)  # Zachowamy dla kompatybilności
+
+class UserThermostat(SQLModel, table=True):
+    """Tabela pośrednia dla relacji many-to-many między User i Thermostat"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    thermostat_id: int = Field(foreign_key="thermostat.id", index=True)
+    is_owner: bool = Field(default=False)  # Czy użytkownik jest właścicielem (może usuwać)
+    added_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        # Unikalność pary user_id + thermostat_id
+        unique_together = ["user_id", "thermostat_id"]
 
 class ThermostatSetting(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -287,21 +299,55 @@ def me(user: User = Depends(get_current_user)):
 
 @app.get("/thermostats", response_model=List[dict])
 def list_thermostats(user: User = Depends(get_current_user)):
-    """Lista termostatów użytkownika - wymaga autoryzacji"""
+    """Lista termostatów użytkownika - wymaga autoryzacji (własne + współdzielone)"""
     with Session(engine) as s:
-        rows = s.exec(select(Thermostat).where(Thermostat.owner_id == user.id)).all()  # Tylko termostaty użytkownika
         out = []
-        for t in rows:
+        
+        # 1. Termostaty które użytkownik posiada (stary model)
+        owned_thermostats = s.exec(select(Thermostat).where(Thermostat.owner_id == user.id)).all()
+        thermostat_ids_added = set()
+        
+        for t in owned_thermostats:
             sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == t.id)).first()
             out.append({
                 "id": t.id,
                 "name": t.name,
+                "is_owner": True,
                 "settings": {
                     "target_temp_c": sett.target_temp_c if sett else 21.0,
                     "mode": sett.mode if sett else "auto",
                     "last_source": sett.last_source if sett else "app"
                 }
             })
+            thermostat_ids_added.add(t.id)
+        
+        # 2. Termostaty współdzielone przez nowy model
+        shared_access = s.exec(select(UserThermostat).where(UserThermostat.user_id == user.id)).all()
+        
+        for ua in shared_access:
+            if ua.thermostat_id in thermostat_ids_added:
+                # Zaktualizuj status właściciela jeśli termostat już jest na liście
+                for item in out:
+                    if item["id"] == ua.thermostat_id:
+                        item["is_owner"] = item.get("is_owner", False) or ua.is_owner
+                continue
+                
+            # Dodaj nowy termostat współdzielony
+            thermostat = s.get(Thermostat, ua.thermostat_id)
+            if thermostat:
+                sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == thermostat.id)).first()
+                out.append({
+                    "id": thermostat.id,
+                    "name": thermostat.name,
+                    "is_owner": ua.is_owner,
+                    "settings": {
+                        "target_temp_c": sett.target_temp_c if sett else 21.0,
+                        "mode": sett.mode if sett else "auto",
+                        "last_source": sett.last_source if sett else "app"
+                    }
+                })
+                thermostat_ids_added.add(thermostat.id)
+        
         return out
 
 @app.get("/thermostats/{tid}/settings", response_model=SettingsOut)
@@ -690,14 +736,25 @@ def device_push_reading(tid: int, data: Union[ReadingIn, DeviceReading]):
         
         # Obsługa DeviceReading z setpoint_c
         if hasattr(data, 'setpoint_c'):
-            # Aktualizujemy również ustawienia termostatu jeśli otrzymujemy setpoint_c
+            # Aktualizujemy tylko jeśli urządzenie ma nowszą wartość niż aplikacja
             sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == tid)).first()
             if sett and sett.target_temp_c != data.setpoint_c:
-                # Jeśli setpoint_c różni się od bazy, aktualizujemy (prawdopodobnie zmiana z termostatu)
-                sett.target_temp_c = data.setpoint_c
-                sett.last_source = "device"
-                sett.updated_at = datetime.utcnow()
-                s.add(sett)
+                # Sprawdź czy ostatnia zmiana była z aplikacji w ostatnim czasie (5 minut)
+                time_diff = datetime.utcnow() - sett.updated_at
+                recent_app_change = sett.last_source == "app" and time_diff.total_seconds() < 300  # 5 minut
+                
+                print(f"[DEBUG] Urządzenie próbuje zmienić temp z {sett.target_temp_c}°C na {data.setpoint_c}°C")
+                print(f"[DEBUG] last_source={sett.last_source}, time_diff={time_diff.total_seconds()}s, recent_app_change={recent_app_change}")
+                
+                if not recent_app_change:
+                    # Można nadpisać - brak świeżej zmiany z aplikacji
+                    print(f"[DEBUG] NADPISYWANIE temperatury przez urządzenie")
+                    sett.target_temp_c = data.setpoint_c
+                    sett.last_source = "device"
+                    sett.updated_at = datetime.utcnow()
+                    s.add(sett)
+                else:
+                    print(f"[DEBUG] BLOKADA nadpisania - świeża zmiana z aplikacji")
         
         r = Reading(
             thermostat_id=tid,
@@ -817,6 +874,155 @@ def list_all_users():
     with Session(engine) as s:
         users = s.exec(select(User)).all()
         return [{"id": u.id, "email": u.email, "is_active": u.is_active} for u in users]
+
+@app.get("/admin/thermostats")
+def list_all_thermostats():
+    """DEBUG: Lista wszystkich termostatów z informacją o właścicielu - tylko do rozwoju!"""
+    with Session(engine) as s:
+        thermostats = s.exec(select(Thermostat)).all()
+        out = []
+        for t in thermostats:
+            sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == t.id)).first()
+            owner_email = None
+            if t.owner_id:
+                owner = s.get(User, t.owner_id)
+                if owner:
+                    owner_email = owner.email
+            out.append({
+                "id": t.id,
+                "name": t.name,
+                "owner_id": t.owner_id,
+                "owner_email": owner_email,
+                "settings": {
+                    "target_temp_c": sett.target_temp_c if sett else 21.0,
+                    "mode": sett.mode if sett else "auto",
+                    "last_source": sett.last_source if sett else "app"
+                }
+            })
+        return out
+
+@app.get("/admin/users/{user_id}/thermostats") 
+def get_user_thermostats(user_id: int):
+    """DEBUG: Lista termostatów konkretnego użytkownika - tylko do rozwoju!"""
+    with Session(engine) as s:
+        user = s.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "Użytkownik nie istnieje")
+            
+        thermostats = s.exec(select(Thermostat).where(Thermostat.owner_id == user_id)).all()
+        out = []
+        for t in thermostats:
+            sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == t.id)).first()
+            out.append({
+                "id": t.id,
+                "name": t.name,
+                "owner_id": t.owner_id,
+                "owner_email": user.email,
+                "settings": {
+                    "target_temp_c": sett.target_temp_c if sett else 21.0,
+                    "mode": sett.mode if sett else "auto",
+                    "last_source": sett.last_source if sett else "app"
+                }
+            })
+        return out
+
+@app.delete("/admin/thermostats/{thermostat_id}")
+def delete_thermostat(thermostat_id: int):
+    """DEBUG: Usuń termostat - tylko do rozwoju!"""
+    with Session(engine) as s:
+        thermostat = s.get(Thermostat, thermostat_id)
+        if not thermostat:
+            raise HTTPException(404, "Termostat nie istnieje")
+        
+        # Usuń powiązane dane
+        s.exec(delete(Reading).where(Reading.thermostat_id == thermostat_id))
+        s.exec(delete(ScheduleEntry).where(ScheduleEntry.thermostat_id == thermostat_id))
+        s.exec(delete(ScheduleTemplate).where(ScheduleTemplate.thermostat_id == thermostat_id))
+        s.exec(delete(ThermostatSetting).where(ThermostatSetting.thermostat_id == thermostat_id))
+        
+        # Usuń termostat
+        thermostat_name = thermostat.name
+        s.delete(thermostat)
+        s.commit()
+        
+        return {"message": f"Termostat '{thermostat_name}' został usunięty"}
+
+@app.put("/admin/thermostats/{thermostat_id}/unassign")
+def unassign_thermostat(thermostat_id: int):
+    """DEBUG: Usuń przypisanie termostatu od użytkownika - tylko do rozwoju!"""
+    with Session(engine) as s:
+        thermostat = s.get(Thermostat, thermostat_id)
+        if not thermostat:
+            raise HTTPException(404, "Termostat nie istnieje")
+        
+        old_owner_id = thermostat.owner_id
+        thermostat.owner_id = None
+        s.add(thermostat)
+        s.commit()
+        
+        return {"message": f"Termostat '{thermostat.name}' został odłączony od użytkownika (ID: {old_owner_id})"}
+
+@app.post("/admin/users")
+def create_user(email: str = Body(...), password: str = Body(...)):
+    """DEBUG: Stwórz nowego użytkownika - tylko do rozwoju!"""
+    with Session(engine) as s:
+        # Sprawdź czy email już istnieje
+        existing = s.exec(select(User).where(User.email == email)).first()
+        if existing:
+            raise HTTPException(400, f"Użytkownik z emailem {email} już istnieje")
+        
+        # Stwórz nowego użytkownika
+        new_user = User(
+            email=email,
+            password_hash=pwd_context.hash(password),
+            is_active=True
+        )
+        s.add(new_user)
+        s.commit()
+        s.refresh(new_user)
+        
+        return {
+            "id": new_user.id,
+            "email": new_user.email,
+            "is_active": new_user.is_active,
+            "message": f"Użytkownik {email} został utworzony"
+        }
+
+@app.post("/admin/thermostats")
+def create_thermostat_admin(name: str = Body(...), owner_id: Optional[int] = Body(None)):
+    """DEBUG: Stwórz nowy termostat - tylko do rozwoju!"""
+    with Session(engine) as s:
+        # Sprawdź czy użytkownik istnieje (jeśli podano)
+        if owner_id:
+            user = s.get(User, owner_id)
+            if not user:
+                raise HTTPException(404, f"Użytkownik z ID {owner_id} nie istnieje")
+        
+        # Stwórz nowy termostat
+        new_thermostat = Thermostat(
+            name=name,
+            owner_id=owner_id
+        )
+        s.add(new_thermostat)
+        s.commit()
+        s.refresh(new_thermostat)
+        
+        # Stwórz domyślne ustawienia
+        default_settings = ThermostatSetting(
+            thermostat_id=new_thermostat.id,
+            target_temp_c=21.0,
+            mode="auto",
+            last_source="admin"
+        )
+        s.add(default_settings)
+        s.commit()
+        
+        return {
+            "id": new_thermostat.id,
+            "name": new_thermostat.name,
+            "owner_id": new_thermostat.owner_id,
+            "message": f"Termostat '{name}' został utworzony"
+        }
 
 @app.delete("/admin/users/{user_id}")
 def delete_user(user_id: int):
@@ -978,6 +1184,159 @@ def get_available_ids(user: User = Depends(get_current_user)):
             "available_ids": available_ids[:20],  # Pokaż pierwsze 20
             "used_ids": sorted(used_ids),
             "total_available": len(available_ids)
+        }
+
+# ------------------ Admin - Współdzielone termostaty ------------------
+@app.post("/admin/thermostats/{thermostat_id}/share/{user_id}")
+def share_thermostat_with_user(thermostat_id: int, user_id: int):
+    """Udostępnij termostat użytkownikowi"""
+    with Session(engine) as s:
+        # Sprawdź czy termostat istnieje
+        thermostat = s.get(Thermostat, thermostat_id)
+        if not thermostat:
+            raise HTTPException(404, "Termostat nie istnieje")
+        
+        # Sprawdź czy użytkownik istnieje
+        user = s.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "Użytkownik nie istnieje")
+        
+        # Sprawdź czy już nie ma dostępu
+        existing = s.exec(select(UserThermostat).where(
+            UserThermostat.user_id == user_id,
+            UserThermostat.thermostat_id == thermostat_id
+        )).first()
+        
+        if existing:
+            return {"message": "Użytkownik ma już dostęp do tego termostatu"}
+        
+        # Dodaj dostęp
+        user_thermostat = UserThermostat(
+            user_id=user_id,
+            thermostat_id=thermostat_id,
+            is_owner=False
+        )
+        s.add(user_thermostat)
+        s.commit()
+        
+        return {"message": f"Termostat '{thermostat.name}' udostępniony użytkownikowi {user.email}"}
+
+@app.delete("/admin/thermostats/{thermostat_id}/unshare/{user_id}")
+def unshare_thermostat_from_user(thermostat_id: int, user_id: int):
+    """Usuń dostęp użytkownika do termostatu"""
+    with Session(engine) as s:
+        user_thermostat = s.exec(select(UserThermostat).where(
+            UserThermostat.user_id == user_id,
+            UserThermostat.thermostat_id == thermostat_id
+        )).first()
+        
+        if not user_thermostat:
+            raise HTTPException(404, "Użytkownik nie ma dostępu do tego termostatu")
+        
+        s.delete(user_thermostat)
+        s.commit()
+        
+        user = s.get(User, user_id)
+        thermostat = s.get(Thermostat, thermostat_id)
+        
+        return {"message": f"Dostęp do termostatu '{thermostat.name}' usunięty dla użytkownika {user.email}"}
+
+@app.get("/admin/thermostats/{thermostat_id}/users")
+def get_thermostat_users(thermostat_id: int):
+    """Lista użytkowników z dostępem do termostatu"""
+    with Session(engine) as s:
+        thermostat = s.get(Thermostat, thermostat_id)
+        if not thermostat:
+            raise HTTPException(404, "Termostat nie istnieje")
+        
+        # Pobierz użytkowników z dostępem przez nową tabelę
+        user_thermostats = s.exec(select(UserThermostat).where(
+            UserThermostat.thermostat_id == thermostat_id
+        )).all()
+        
+        users = []
+        for ut in user_thermostats:
+            user = s.get(User, ut.user_id)
+            if user:
+                users.append({
+                    "id": user.id,
+                    "email": user.email,
+                    "is_owner": ut.is_owner,
+                    "added_at": ut.added_at.isoformat()
+                })
+        
+        # Dodaj właściciela z starego modelu (jeśli istnieje)
+        if thermostat.owner_id:
+            owner = s.get(User, thermostat.owner_id)
+            if owner and not any(u["id"] == owner.id for u in users):
+                users.append({
+                    "id": owner.id,
+                    "email": owner.email,
+                    "is_owner": True,
+                    "added_at": "legacy"
+                })
+        
+        return {
+            "thermostat": {
+                "id": thermostat.id,
+                "name": thermostat.name
+            },
+            "users": users
+        }
+
+@app.get("/admin/users/{user_id}/thermostats")
+def get_user_shared_thermostats(user_id: int):
+    """Lista termostatów dostępnych dla użytkownika"""
+    with Session(engine) as s:
+        user = s.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "Użytkownik nie istnieje")
+        
+        # Pobierz termostaty przez nową tabelę
+        user_thermostats = s.exec(select(UserThermostat).where(
+            UserThermostat.user_id == user_id
+        )).all()
+        
+        thermostats = []
+        for ut in user_thermostats:
+            thermostat = s.get(Thermostat, ut.thermostat_id)
+            if thermostat:
+                sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == thermostat.id)).first()
+                thermostats.append({
+                    "id": thermostat.id,
+                    "name": thermostat.name,
+                    "is_owner": ut.is_owner,
+                    "added_at": ut.added_at.isoformat(),
+                    "settings": {
+                        "target_temp_c": sett.target_temp_c if sett else 21.0,
+                        "mode": sett.mode if sett else "auto",
+                        "last_source": sett.last_source if sett else "app"
+                    }
+                })
+        
+        # Dodaj termostaty z starego modelu (właściciela)
+        legacy_thermostats = s.exec(select(Thermostat).where(Thermostat.owner_id == user_id)).all()
+        for thermostat in legacy_thermostats:
+            if not any(t["id"] == thermostat.id for t in thermostats):
+                sett = s.exec(select(ThermostatSetting).where(ThermostatSetting.thermostat_id == thermostat.id)).first()
+                thermostats.append({
+                    "id": thermostat.id,
+                    "name": thermostat.name,
+                    "is_owner": True,
+                    "added_at": "legacy",
+                    "settings": {
+                        "target_temp_c": sett.target_temp_c if sett else 21.0,
+                        "mode": sett.mode if sett else "auto",
+                        "last_source": sett.last_source if sett else "app"
+                    }
+                })
+        
+        return {
+            "user": {
+                "id": user.id,
+                "email": user.email
+            },
+            "thermostats": thermostats
         }
 
 # ------------------ Zdrowie ------------------

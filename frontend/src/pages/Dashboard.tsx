@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { 
-  FiThermometer, 
   FiDroplet, 
   FiWind, 
   FiHome, 
@@ -14,7 +13,9 @@ import {
   FiUser,
   FiCalendar,
   FiEdit,
-  FiTrash2
+  FiTrash2,
+  FiServer,
+  FiThermometer
 } from "react-icons/fi";
 import { ScheduleManager } from "../features/schedule";
 
@@ -91,7 +92,7 @@ function getTemperatureStatus(current: number, target: number) {
 }
 
 export default function Dashboard() {
-  const { token, apiBase, logout } = useAuth();
+  const { token, apiBase, logout, isAdmin } = useAuth();
 
   const [me, setMe] = useState<UserMe | null>(null);
   const [meErr, setMeErr] = useState<string | null>(null);
@@ -431,7 +432,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div className="nav-brand">
               <div className="nav-icon">
-                <FiThermometer className="w-5 h-5" />
+                <FiHome className="w-5 h-5" />
               </div>
               <div>
                 <h1 className="text-xl font-bold">HeatBeat</h1>
@@ -450,7 +451,7 @@ export default function Dashboard() {
                       : "text-white/70 hover:text-white hover:bg-white/10"
                   }`}
                 >
-                  <FiThermometer className="w-4 h-4 inline mr-1 sm:mr-2" />
+                  <FiHome className="w-4 h-4 inline mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">Dashboard</span>
                   <span className="sm:hidden">Dom</span>
                 </button>
@@ -501,6 +502,16 @@ export default function Dashboard() {
                 <span className="hidden sm:inline">Odśwież</span>
               </button>
 
+              {isAdmin && (
+                <button
+                  onClick={() => window.location.href = "/?admin=true"}
+                  className="btn-secondary flex items-center gap-2"
+                >
+                  <FiServer className="w-4 h-4" />
+                  <span className="hidden sm:inline">Admin</span>
+                </button>
+              )}
+
               <button
                 onClick={logout}
                 className="btn-ghost flex items-center gap-2"
@@ -545,7 +556,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h2 className="text-xl sm:text-2xl font-bold text-white mobile-header">
-                      Witaj{me?.email ? `, ${me.email.split('@')[0]}` : ""}! 👋
+                      Witaj{me?.email ? `, ${me.email.split('@')[0]}` : ""}!
                     </h2>
                     <p className="text-sm sm:text-base text-white/70">Zarządzaj swoimi termostatami w jednym miejscu</p>
                   </div>
