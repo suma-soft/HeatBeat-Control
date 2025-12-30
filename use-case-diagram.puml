@@ -1,0 +1,112 @@
+@startuml HeatBeat Use Case Diagram
+
+!define RECTANGLE class
+
+actor "Użytkownik" as User
+actor "Administrator" as Admin
+actor "Urządzenie IoT" as IoT
+
+rectangle "System HeatBeat" {
+  
+  package "Zarządzanie Kontem" {
+    usecase "Rejestracja" as UC1
+    usecase "Logowanie" as UC2
+    usecase "Wylogowanie" as UC3
+  }
+  
+  package "Sterowanie Termostatem" {
+    usecase "Wyświetlanie temperatury" as UC4
+    usecase "Ustawianie temperatury docelowej" as UC5
+    usecase "Zmiana trybu pracy" as UC6
+    usecase "Wyświetlanie odczytów" as UC7
+    usecase "Odświeżanie danych" as UC8
+  }
+  
+  package "Harmonogram" {
+    usecase "Tworzenie harmonogramu" as UC9
+    usecase "Edytowanie harmonogramu" as UC10
+    usecase "Usuwanie harmonogramu" as UC11
+    usecase "Kopiowanie harmonogramu" as UC12
+    usecase "Tworzenie szablonów" as UC13
+  }
+  
+  package "Administracja" {
+    usecase "Zarządzanie użytkownikami" as UC14
+    usecase "Zarządzanie termostatami" as UC15
+    usecase "Przypisywanie termostatów" as UC16
+    usecase "Udostępnianie termostatów" as UC17
+    usecase "Cofanie udostępnienia" as UC18
+    usecase "Tworzenie nowych termostatów" as UC19
+    usecase "Usuwanie termostatów" as UC20
+  }
+  
+  package "Komunikacja IoT" {
+    usecase "Wysyłanie odczytów" as UC21
+    usecase "Pobieranie ustawień" as UC22
+    usecase "Aktualizacja temperatury docelowej" as UC23
+    usecase "Wykrywanie otwartych okien" as UC24
+    usecase "Monitorowanie statusu grzania" as UC25
+  }
+}
+
+' Relacje Użytkownik
+User --> UC1
+User --> UC2
+User --> UC3
+User --> UC4
+User --> UC5
+User --> UC6
+User --> UC7
+User --> UC8
+User --> UC9
+User --> UC10
+User --> UC11
+User --> UC12
+User --> UC13
+
+' Relacje Administrator
+Admin --> UC2
+Admin --> UC3
+Admin --> UC14
+Admin --> UC15
+Admin --> UC16
+Admin --> UC17
+Admin --> UC18
+Admin --> UC19
+Admin --> UC20
+
+' Administrator dziedziczy możliwości użytkownika
+Admin --|> User
+
+' Relacje Urządzenie IoT
+IoT --> UC21
+IoT --> UC22
+IoT --> UC23
+IoT --> UC24
+IoT --> UC25
+
+' Rozszerzenia i zależności
+UC5 ..> UC22 : <<include>>
+UC22 ..> UC23 : <<include>>
+UC21 ..> UC24 : <<extend>>
+UC21 ..> UC25 : <<extend>>
+UC17 ..> UC16 : <<extend>>
+UC9 ..> UC13 : <<extend>>
+
+' Notatki
+note right of UC17
+  Jeden termostat może być
+  udostępniony wielu użytkownikom
+end note
+
+note right of UC22
+  Urządzenie synchronizuje się
+  co 30 sekund z serwerem
+end note
+
+note bottom of UC5
+  Zmiany z aplikacji mają
+  priorytet przez 5 minut
+end note
+
+@enduml
