@@ -4,7 +4,8 @@ import { useAuth } from "../../context/AuthContext";
 import { useThermostat } from "./useThermostat";
 
 export default function ThermostatPanel({ deviceId = "thermo-001" }) {
-  const { token, apiBaseUrl } = useAuth();
+  const { token } = useAuth();
+  const apiBaseUrl = "http://localhost:8000"; // TODO: get from config
   const { state, setSetpoint } = useThermostat(apiBaseUrl, deviceId, token || undefined);
   const [localTarget, setLocalTarget] = useState<number | null>(null);
 

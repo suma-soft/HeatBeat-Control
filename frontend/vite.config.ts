@@ -1,37 +1,52 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-// import { VitePWA } from 'vite-plugin-pwa';
+import { VitePWA } from 'vite-plugin-pwa';
 
 // Prosty proxy do FastAPI na porcie 8000
 export default defineConfig({
   plugins: [
     react(),
-    // TODO: Dodać PWA plugin po zainstalowaniu pakietu
-    // VitePWA({
-    //   registerType: 'autoUpdate',
-    //   manifest: {
-    //     name: 'HeatBeat Control',
-    //     short_name: 'HeatBeat',
-    //     description: 'Aplikacja do sterowania systemem grzewczym',
-    //     theme_color: '#059669',
-    //     background_color: '#ffffff',
-    //     display: 'standalone',
-    //     scope: '/',
-    //     start_url: '/',
-    //     icons: [
-    //       {
-    //         src: 'pwa-192x192.png',
-    //         sizes: '192x192',
-    //         type: 'image/png'
-    //       },
-    //       {
-    //         src: 'pwa-512x512.png',
-    //         sizes: '512x512',
-    //         type: 'image/png'
-    //       }
-    //     ]
-    //   }
-    // })
+    VitePWA({
+      registerType: 'autoUpdate',
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api/]
+      },
+      devOptions: {
+        enabled: true,
+        type: 'module'
+      },
+      includeAssets: ['icon-192.svg', 'icon-512.svg'],
+      manifest: {
+        name: 'HeatBeat Control',
+        short_name: 'HeatBeat',
+        description: 'Aplikacja do sterowania systemem grzewczym',
+        theme_color: '#667eea',
+        background_color: '#667eea',
+        display: 'standalone',
+        display_override: ['window-controls-overlay', 'standalone', 'fullscreen'],
+        orientation: 'portrait',
+        scope: '/',
+        start_url: '/',
+        categories: ['utilities', 'productivity'],
+        lang: 'pl',
+        icons: [
+          {
+            src: 'icon-192.svg',
+            sizes: '192x192',
+            type: 'image/svg+xml',
+            purpose: 'any maskable'
+          },
+          {
+            src: 'icon-512.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'any maskable'
+          }
+        ]
+      }
+    })
   ],
   server: {
     host: '0.0.0.0',

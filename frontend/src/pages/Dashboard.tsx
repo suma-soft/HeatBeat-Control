@@ -525,40 +525,40 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 sm:py-8">
+      <main className="max-w-7xl mx-auto px-2 py-4 sm:px-6 sm:py-8">
         {/* Error Messages */}
         {meErr && (
-          <div className="mb-6 glass-card p-4 rounded-xl border-red-300/30 bg-red-500/20 text-white animate-fade-in">
+          <div className="mb-4 glass-card p-3 rounded-xl border-red-300/30 bg-red-500/20 text-white animate-fade-in sm:mb-6 sm:p-4">
             <div className="flex items-center gap-2">
-              <FiActivity className="w-5 h-5 text-red-300" />
-              <span>{meErr}</span>
+              <FiActivity className="w-4 h-4 text-red-300 sm:w-5 sm:h-5" />
+              <span className="text-sm sm:text-base">{meErr}</span>
             </div>
           </div>
         )}
         
         {globalErr && (
-          <div className="mb-6 glass-card p-4 rounded-xl border-red-300/30 bg-red-500/20 text-white animate-fade-in">
+          <div className="mb-4 glass-card p-3 rounded-xl border-red-300/30 bg-red-500/20 text-white animate-fade-in sm:mb-6 sm:p-4">
             <div className="flex items-center gap-2">
-              <FiActivity className="w-5 h-5 text-red-300" />
-              <span>{globalErr}</span>
+              <FiActivity className="w-4 h-4 text-red-300 sm:w-5 sm:h-5" />
+              <span className="text-sm sm:text-base">{globalErr}</span>
             </div>
           </div>
         )}
 
         {/* Welcome Section */}
         {activeView === "dashboard" && (
-          <section className="mb-8 animate-fade-in">
-            <div className="glass-card p-6 rounded-2xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
-                    <FiUser className="w-6 h-6 text-white" />
+          <section className="mb-6 animate-fade-in sm:mb-8">
+            <div className="glass-card p-4 rounded-2xl sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center sm:w-12 sm:h-12">
+                    <FiUser className="w-5 h-5 text-white sm:w-6 sm:h-6" />
                   </div>
                   <div>
-                    <h2 className="text-xl sm:text-2xl font-bold text-white mobile-header">
+                    <h2 className="text-lg font-bold text-white mobile-header sm:text-2xl">
                       Witaj{me?.email ? `, ${me.email.split('@')[0]}` : ""}!
                     </h2>
-                    <p className="text-sm sm:text-base text-white/70">Zarządzaj swoimi termostatami w jednym miejscu</p>
+                    <p className="text-xs text-white/70 sm:text-base">Zarządzaj swoimi termostatami w jednym miejscu</p>
                   </div>
                 </div>
                 
@@ -568,10 +568,10 @@ export default function Dashboard() {
                     setShowAddThermostat(true);
                     loadAvailableIds();
                   }}
-                  className="btn-primary flex items-center gap-2"
+                  className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto"
                 >
                   <FiPlus className="w-4 h-4" />
-                  Dodaj termostat
+                  <span className="text-sm sm:text-base">Dodaj termostat</span>
                 </button>
               </div>
             </div>
@@ -865,12 +865,13 @@ function ThermostatCard({
         <button
           onClick={() => onBump(t.id, -STEP)}
           className={`w-20 h-20 sm:w-14 sm:h-14 rounded-full border-2 flex items-center justify-center text-white text-3xl sm:text-xl font-bold
-                     transition-colors duration-300 shadow-lg
+                     transition-colors duration-300 shadow-lg aspect-square
                      ${t.saving 
                        ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
                        : 'bg-purple-500 border-purple-600 hover:bg-purple-600'
                      }`}
           disabled={t.saving}
+          style={{ borderRadius: '50%' }}
         >
           {t.saving ? (
             <div className="w-6 h-6 sm:w-5 sm:h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
@@ -894,12 +895,13 @@ function ThermostatCard({
         <button
           onClick={() => onBump(t.id, +STEP)}
           className={`w-20 h-20 sm:w-14 sm:h-14 rounded-full border-2 flex items-center justify-center text-white text-3xl sm:text-xl font-bold
-                     transition-colors duration-300 shadow-lg
+                     transition-colors duration-300 shadow-lg aspect-square
                      ${t.saving 
                        ? 'bg-gray-400 border-gray-500 cursor-not-allowed opacity-50' 
                        : 'bg-purple-500 border-purple-600 hover:bg-purple-600'
                      }`}
           disabled={t.saving}
+          style={{ borderRadius: '50%' }}
         >
           {t.saving ? (
             <div className="w-6 h-6 sm:w-5 sm:h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>

@@ -6,11 +6,42 @@
 @layer base {
   html {
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    /* PWA safe area handling */
+    height: 100%;
+    font-size: 16px;
   }
   
   body {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
+    min-height: 100dvh; /* Dynamic viewport height for mobile */
+    /* PWA safe area padding */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    margin: 0;
+    overflow-x: hidden;
+  }
+
+  /* App root container */
+  #root {
+    min-height: 100vh;
+    min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    width: 100%;
+  }
+
+  /* Mobile viewport fixes */
+  @media (max-width: 768px) {
+    html {
+      font-size: 14px;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+    
+    body {
+      -webkit-overflow-scrolling: touch;
+    }
   }
 
   /* Smooth scrolling */
@@ -28,18 +59,21 @@
   /* Modern button styles */
   .btn-primary {
     @apply bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 
-           text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl
-           transform hover:scale-105 transition-all duration-300 ease-out;
+           text-white font-semibold py-2 px-4 rounded-xl shadow-lg hover:shadow-xl
+           transform hover:scale-105 transition-all duration-300 ease-out text-sm
+           sm:py-3 sm:px-6 sm:text-base;
   }
   
   .btn-secondary {
-    @apply bg-white/10 backdrop-blur-sm border border-white/20 text-white font-medium py-2 px-4 
-           rounded-lg hover:bg-white/20 transition-all duration-300 ease-out;
+    @apply bg-white/10 backdrop-blur-sm border border-white/20 text-white font-medium py-1.5 px-3 
+           rounded-lg hover:bg-white/20 transition-all duration-300 ease-out text-xs
+           sm:py-2 sm:px-4 sm:text-sm;
   }
   
   .btn-ghost {
-    @apply bg-transparent border border-white/30 text-white font-medium py-2 px-4 
-           rounded-lg hover:bg-white/10 transition-all duration-300 ease-out;
+    @apply bg-transparent border border-white/30 text-white font-medium py-1.5 px-3 
+           rounded-lg hover:bg-white/10 transition-all duration-300 ease-out text-xs
+           sm:py-2 sm:px-4 sm:text-sm;
   }
 
   /* Modern input styles */
@@ -74,21 +108,36 @@
 
   /* Temperature display styles */
   .temp-display {
-    @apply text-4xl font-bold bg-gradient-to-r from-primary-400 to-primary-600 
-           bg-clip-text text-transparent;
+    @apply text-3xl font-bold bg-gradient-to-r from-primary-400 to-primary-600 
+           bg-clip-text text-transparent sm:text-4xl;
   }
   
   .temp-controls {
-    @apply flex items-center justify-center gap-4 p-6 bg-white/10 backdrop-blur-sm 
-           rounded-2xl border border-white/20;
+    @apply flex items-center justify-center gap-3 p-4 bg-white/10 backdrop-blur-sm 
+           rounded-2xl border border-white/20 sm:gap-4 sm:p-6;
   }
   
   .temp-button {
-    @apply w-16 h-16 rounded-full bg-primary-500 border border-primary-600
-           flex items-center justify-center text-white text-2xl font-bold
+    @apply w-12 h-12 rounded-full bg-primary-500 border border-primary-600
+           flex items-center justify-center text-white text-xl font-bold
            hover:bg-primary-600 transform hover:scale-110 transition-all duration-300
            active:scale-95 shadow-lg hover:shadow-xl
-           sm:w-12 sm:h-12 sm:text-xl;
+           sm:w-16 sm:h-16 sm:text-2xl;
+    /* Ensure perfect circle */
+    border-radius: 50% !important;
+  }
+
+  /* Mobile-specific improvements */
+  .mobile-header {
+    @apply text-lg sm:text-2xl;
+  }
+  
+  .mobile-card {
+    @apply p-4 sm:p-6;
+  }
+  
+  .mobile-grid {
+    @apply grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-6;
   }
 
   /* Status indicators */
